@@ -24,24 +24,23 @@ func NewClient(apiKey string) *Client {
 
 type TranslateRequest struct {
 	Text   string `json:"text"`
-	// Source string `json:"source_language,omitempty"` // API doesn't seem to use this in example, keeping as is or removing if strictly following example. Let's keep strict for now.
-    // The example only showed text and target_language.
+	Source string `json:"source_language,omitempty"`
 	Target string `json:"target_language"`
 }
 
 type TranslateResponse struct {
-    // We still don't have the exact response format, checking if user provided it.
-    // User only provided the REQUEST.
-    // I will stick to the previous assumption but looking at common patterns, maybe it returns just the text or a json object.
-    // I'll keep the generic "translation" field but also print the body if error occurs to help debugging if it fails.
-	Translation string `json:"translation"` 
-    Error string `json:"error,omitempty"`
+	TranslatedText string `json:"translated_text"`
+	SourceLanguage string `json:"source_language"`
+	TargetLanguage string `json:"target_language"`
+    CharacterCount int    `json:"character_count"`
+    Error          string `json:"error,omitempty"` // Keeping just in case, though not in example success response
 }
 
 func (c *Client) Translate(text string) (string, error) {
 	reqBody := TranslateRequest{
 		Text:   text,
 		Target: "en",
+        // Source left empty to default to "auto"
 	}
 	
 	jsonBody, err := json.Marshal(reqBody)
@@ -49,7 +48,7 @@ func (c *Client) Translate(text string) (string, error) {
 		return "", err
 	}
 
-    // Endpoint is /translate/ (trailing slash might be important based on curl example)
+    // Endpoint is /translate/ (trailing slash confirmed by user example)
 	url := fmt.Sprintf("%s/translate/", c.BaseURL)
 	
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
@@ -75,11 +74,13 @@ func (c *Client) Translate(text string) (string, error) {
 		return "", err
 	}
     
-    // Fallback: if translation is empty, maybe the field name is different.
-    // Without response example, this is still a guess.
     if result.Error != "" {
         return "", fmt.Errorf("api error: %s", result.Error)
     }
 
-	return result.Translation, nil
+    if result.TranslatedText == "" {
+         return "", fmt.Errorf("empty translation received")
+    }
+
+	return result.TranslatedText, nil
 }
