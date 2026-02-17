@@ -18,7 +18,7 @@ type Client struct {
 func NewClient(apiKey string) *Client {
 	return &Client{
 		ApiKey:  apiKey,
-		BaseURL: "https://translateapi.ai/api/v1", // Updated to v1
+		BaseURL: "https://api.translateapi.ai/api/v1", // Updated to v1
 		HTTP:    &http.Client{Timeout: 10 * time.Second},
 	}
 }
