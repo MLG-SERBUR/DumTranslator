@@ -41,20 +41,26 @@ func (h *Handler) MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate
 	}
 
 	// Check language (Cost saving)
-    // We only translate if it is NOT English.
-	if translate.IsEnglish(m.Content) {
+    // We only translate if it is Arabic or Korean.
+	if !translate.IsArabicOrKorean(m.Content) {
 		return
 	}
 
 	// Translate
-	translated, err := h.Translator.Translate(m.Content)
+	resp, err := h.Translator.Translate(m.Content)
 	if err != nil {
 		log.Printf("Translation error: %v", err)
 		return
 	}
 
+    // Double check with API response
+    if resp.SourceLanguage != "ar" && resp.SourceLanguage != "ko" {
+        log.Printf("Translation API returned source language %s, skipping webhook", resp.SourceLanguage)
+        return
+    }
+
 	// Send Webhook
-	err = h.sendWebhook(s, m, translated)
+	err = h.sendWebhook(s, m, resp.TranslatedText)
 	if err != nil {
 		log.Printf("Webhook error: %v", err)
 	}

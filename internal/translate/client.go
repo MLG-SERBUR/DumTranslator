@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"time"
 )
@@ -37,7 +38,8 @@ type TranslateResponse struct {
     Error          string `json:"error,omitempty"` // Keeping just in case, though not in example success response
 }
 
-func (c *Client) Translate(text string) (string, error) {
+func (c *Client) Translate(text string) (*TranslateResponse, error) {
+	log.Printf("Translating text: %s", text)
 	reqBody := TranslateRequest{
 		Text:   text,
 		Target: "en",
@@ -46,7 +48,7 @@ func (c *Client) Translate(text string) (string, error) {
 	
 	jsonBody, err := json.Marshal(reqBody)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
     // Endpoint is /translate/ (trailing slash confirmed by user example)
@@ -54,7 +56,7 @@ func (c *Client) Translate(text string) (string, error) {
 	
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -62,27 +64,27 @@ func (c *Client) Translate(text string) (string, error) {
 
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("api returned status: %d, body: %s", resp.StatusCode, string(bodyBytes))
+		return nil, fmt.Errorf("api returned status: %d, body: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	var result TranslateResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", err
+		return nil, err
 	}
     
     if result.Error != "" {
-        return "", fmt.Errorf("api error: %s", result.Error)
+        return nil, fmt.Errorf("api error: %s", result.Error)
     }
 
     if result.TranslatedText == "" {
-         return "", fmt.Errorf("empty translation received")
+         return nil, fmt.Errorf("empty translation received")
     }
 
-	return result.TranslatedText, nil
+	return &result, nil
 }
