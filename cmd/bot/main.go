@@ -31,11 +31,12 @@ func main() {
         log.Fatalf("Error loading channel store: %v", err)
     }
 
-	// Init Translator
-	translator := translate.NewClient(cfg.TranslateAPIKey)
+	// Init Translators
+	translateAPI := translate.NewTranslateAPI(cfg.TranslateAPIKey)
+	myMemory := translate.NewMyMemory(cfg.MyMemoryEmail)
 
 	// Init Discord Handler
-	handler := discord.NewHandler(translator, channelStore)
+	handler := discord.NewHandler(translateAPI, myMemory, cfg, *configPath, channelStore)
 
 	// Init Discord Session
 	dg, err := discordgo.New("Bot " + cfg.DiscordToken)
@@ -65,6 +66,18 @@ func main() {
         {
             Name: "ignore",
             Description: "Stop translating messages in this channel",
+        },
+        {
+            Name: "backend",
+            Description: "Switch translation backend",
+            Options: []*discordgo.ApplicationCommandOption{
+                {
+                    Type:        discordgo.ApplicationCommandOptionString,
+                    Name:        "name",
+                    Description: "Backend name (TranslateAPI or MyMemory)",
+                    Required:    false,
+                },
+            },
         },
     }
     

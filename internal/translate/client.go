@@ -10,18 +10,43 @@ import (
 	"time"
 )
 
-type Client struct {
+type Translator interface {
+	Translate(text string, source string) (*TranslateResponse, error)
+	DisplayName() string
+}
+
+type TranslateAPI struct {
 	ApiKey  string
 	BaseURL string
 	HTTP    *http.Client
 }
 
-func NewClient(apiKey string) *Client {
-	return &Client{
+func NewTranslateAPI(apiKey string) *TranslateAPI {
+	return &TranslateAPI{
 		ApiKey:  apiKey,
-		BaseURL: "https://api.translateapi.ai/api/v1", // Updated to v1
+		BaseURL: "https://api.translateapi.ai/api/v1",
 		HTTP:    &http.Client{Timeout: 10 * time.Second},
 	}
+}
+
+func (c *TranslateAPI) DisplayName() string {
+	return "TranslateAPI"
+}
+
+type MyMemory struct {
+	Email string
+	HTTP  *http.Client
+}
+
+func NewMyMemory(email string) *MyMemory {
+	return &MyMemory{
+		Email: email,
+		HTTP:  &http.Client{Timeout: 10 * time.Second},
+	}
+}
+
+func (m *MyMemory) DisplayName() string {
+	return "MyMemory"
 }
 
 type TranslateRequest struct {
@@ -34,16 +59,16 @@ type TranslateResponse struct {
 	TranslatedText string `json:"translated_text"`
 	SourceLanguage string `json:"source_language"`
 	TargetLanguage string `json:"target_language"`
-    CharacterCount int    `json:"character_count"`
-    Error          string `json:"error,omitempty"` // Keeping just in case, though not in example success response
+	CharacterCount int    `json:"character_count"`
+	Error          string `json:"error,omitempty"`
 }
 
-func (c *Client) Translate(text string) (*TranslateResponse, error) {
-	log.Printf("Translating text: %s", text)
+func (c *TranslateAPI) Translate(text string, source string) (*TranslateResponse, error) {
+	log.Printf("Translating text with TranslateAPI: %s", text)
 	reqBody := TranslateRequest{
 		Text:   text,
+		Source: source,
 		Target: "en",
-        // Source left empty to default to "auto"
 	}
 	
 	jsonBody, err := json.Marshal(reqBody)
@@ -51,7 +76,6 @@ func (c *Client) Translate(text string) (*TranslateResponse, error) {
 		return nil, err
 	}
 
-    // Endpoint is /translate/ (trailing slash confirmed by user example)
 	url := fmt.Sprintf("%s/translate/", c.BaseURL)
 	
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
@@ -78,13 +102,78 @@ func (c *Client) Translate(text string) (*TranslateResponse, error) {
 		return nil, err
 	}
     
-    if result.Error != "" {
-        return nil, fmt.Errorf("api error: %s", result.Error)
-    }
+	if result.Error != "" {
+		return nil, fmt.Errorf("api error: %s", result.Error)
+	}
 
-    if result.TranslatedText == "" {
-         return nil, fmt.Errorf("empty translation received")
-    }
+	if result.TranslatedText == "" {
+		return nil, fmt.Errorf("empty translation received")
+	}
 
 	return &result, nil
 }
+
+type MyMemoryResponse struct {
+	ResponseData struct {
+		TranslatedText string `json:"translatedText"`
+	} `json:"responseData"`
+	ResponseStatus int    `json:"responseStatus"`
+	Matches        []struct {
+		Segment        string `json:"segment"`
+		Translation    string `json:"translation"`
+		SourceLanguage string `json:"source"`
+		TargetLanguage string `json:"target"`
+	} `json:"matches"`
+}
+
+func (m *MyMemory) Translate(text string, source string) (*TranslateResponse, error) {
+	log.Printf("Translating text with MyMemory: %s", text)
+	
+	if source == "" || source == "unknown" {
+		source = "auto"
+	}
+	
+	url := "https://api.mymemory.translated.net/get?q=" + fmt.Sprintf("%s", text) + "&langpair=" + source + "|en"
+	if m.Email != "" {
+		url += "&de=" + m.Email
+	}
+
+	resp, err := m.HTTP.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("mymemory returned status: %d, body: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var mmResp MyMemoryResponse
+	if err := json.NewDecoder(resp.Body).Decode(&mmResp); err != nil {
+		return nil, err
+	}
+
+	if mmResp.ResponseStatus != http.StatusOK {
+		return nil, fmt.Errorf("mymemory error status: %d", mmResp.ResponseStatus)
+	}
+
+	// Extract source language from first match if available
+	sourceLang := "unknown"
+	if len(mmResp.Matches) > 0 {
+		sourceLang = mmResp.Matches[0].SourceLanguage
+		// MyMemory often returns ISO codes. TranslateAPI uses "ar", "ko". 
+		// MyMemory might return "ar-SA" or just "ar".
+		// We'll normalize to 2 chars for the check in handler.go.
+		if len(sourceLang) > 2 {
+			sourceLang = sourceLang[:2]
+		}
+	}
+
+	return &TranslateResponse{
+		TranslatedText: mmResp.ResponseData.TranslatedText,
+		SourceLanguage: sourceLang,
+		TargetLanguage: "en",
+	}, nil
+}
+

@@ -11,18 +11,38 @@ import (
 )
 
 type Handler struct {
-	Translator   *translate.Client
+	TranslateAPI *translate.TranslateAPI
+	MyMemory     *translate.MyMemory
+	ActiveBackend string
 	Channels     *config.ChannelStore
 	WebhookCache map[string]string // map[channelID]webhookID
+	Config       *config.Config
+	ConfigPath   string
 }
 
-func NewHandler(t *translate.Client, cs *config.ChannelStore) *Handler {
+func NewHandler(tAPI *translate.TranslateAPI, mm *translate.MyMemory, cfg *config.Config, configPath string, cs *config.ChannelStore) *Handler {
+	initialBackend := cfg.Backend
+	if initialBackend == "" {
+		initialBackend = "TranslateAPI"
+	}
 	return &Handler{
-		Translator:   t,
+		TranslateAPI: tAPI,
+		MyMemory:     mm,
+		ActiveBackend: initialBackend,
 		Channels:     cs,
 		WebhookCache: make(map[string]string),
+		Config:       cfg,
+		ConfigPath:   configPath,
 	}
 }
+
+func (h *Handler) activeTranslator() translate.Translator {
+	if h.ActiveBackend == "MyMemory" {
+		return h.MyMemory
+	}
+	return h.TranslateAPI
+}
+
 
 func (h *Handler) MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	// Ignore all messages created by the bot itself
@@ -46,12 +66,16 @@ func (h *Handler) MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate
 		return
 	}
 
+	// Detect Language for MyMemory and TranslateAPI
+	source := translate.DetectLanguage(m.Content)
+
 	// Translate
-	resp, err := h.Translator.Translate(m.Content)
+	resp, err := h.activeTranslator().Translate(m.Content, source)
 	if err != nil {
 		log.Printf("Translation error: %v", err)
 		return
 	}
+
 
     // Double check with API response
     if resp.SourceLanguage != "ar" && resp.SourceLanguage != "ko" {
@@ -97,6 +121,44 @@ func (h *Handler) InteractionCreate(s *discordgo.Session, i *discordgo.Interacti
                 Content: response,
             },
         })
+    case "backend":
+        options := data.Options
+        if len(options) == 0 {
+             s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+                Type: discordgo.InteractionResponseChannelMessageWithSource,
+                Data: &discordgo.InteractionResponseData{
+                    Content: "Current backend: " + h.ActiveBackend,
+                },
+            })
+            return
+        }
+        
+        newBackend := options[0].StringValue()
+        if newBackend != "TranslateAPI" && newBackend != "MyMemory" {
+            s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+                Type: discordgo.InteractionResponseChannelMessageWithSource,
+                Data: &discordgo.InteractionResponseData{
+                    Content: "Invalid backend. Use 'TranslateAPI' or 'MyMemory'.",
+                },
+            })
+            return
+        }
+        
+        h.ActiveBackend = newBackend
+        h.Config.Backend = newBackend
+        err := h.Config.Save(h.ConfigPath)
+        response := "Backend switched to " + newBackend
+        if err != nil {
+            log.Printf("Error saving config: %v", err)
+            response += " (failed to persist: " + err.Error() + ")"
+        }
+
+        s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+            Type: discordgo.InteractionResponseChannelMessageWithSource,
+            Data: &discordgo.InteractionResponseData{
+                Content: response,
+            },
+        })
     }
 }
 
@@ -133,7 +195,7 @@ func (h *Handler) sendWebhook(s *discordgo.Session, m *discordgo.MessageCreate, 
     
 	_, err = s.WebhookExecute(webhookID, webhookToken, true, &discordgo.WebhookParams{
 		Content:   content,
-		Username:  m.Author.Username + " (Translated)",
+		Username:  m.Author.Username + " (" + h.activeTranslator().DisplayName() + ")",
 		AvatarURL: m.Author.AvatarURL(""),
 	})
 	return err

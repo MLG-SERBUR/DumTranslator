@@ -25,3 +25,32 @@ func IsArabicOrKorean(text string) bool {
 
 	return float64(arKorCount)/float64(letterCount) > 0.4
 }
+// DetectLanguage returns "ar" if Arabic, "ko" if Korean, or "unknown" otherwise.
+func DetectLanguage(text string) string {
+	var arCount, korCount, letterCount int
+
+	for _, r := range text {
+		if !unicode.IsLetter(r) {
+			continue
+		}
+		letterCount++
+		if unicode.In(r, unicode.Arabic) {
+			arCount++
+		} else if unicode.In(r, unicode.Hangul) {
+			korCount++
+		}
+	}
+
+	if letterCount == 0 {
+		return "unknown"
+	}
+
+	if float64(arCount)/float64(letterCount) > 0.4 {
+		return "ar"
+	}
+	if float64(korCount)/float64(letterCount) > 0.4 {
+		return "ko"
+	}
+
+	return "unknown"
+}

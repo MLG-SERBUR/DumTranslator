@@ -9,6 +9,8 @@ import (
 type Config struct {
 	DiscordToken    string   `json:"discord_token"`
 	TranslateAPIKey string   `json:"translate_api_key"`
+	MyMemoryEmail   string   `json:"mymemory_email"` // Optional email for MyMemory
+	Backend         string   `json:"backend"`          // "TranslateAPI" or "MyMemory"
 	TargetChannels  []string `json:"target_channels"` // Initial channels from config
 }
 
@@ -29,6 +31,14 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, err
 	}
 	return &cfg, nil
+}
+
+func (c *Config) Save(path string) error {
+	data, err := json.MarshalIndent(c, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0644)
 }
 
 func NewChannelStore(path string, initial []string) (*ChannelStore, error) {
