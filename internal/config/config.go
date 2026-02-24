@@ -10,7 +10,9 @@ type Config struct {
 	DiscordToken    string   `json:"discord_token"`
 	TranslateAPIKey string   `json:"translate_api_key"`
 	MyMemoryEmail   string   `json:"mymemory_email"` // Optional email for MyMemory
-	Backend         string   `json:"backend"`          // "TranslateAPI" or "MyMemory"
+	LaraKeyID       string   `json:"lara_key_id"`
+	LaraKeySecret   string   `json:"lara_key_secret"`
+	Backend         string   `json:"backend"`          // "TranslateAPI", "MyMemory", "LaraTranslate", or "LaraTranslate2"
 	TargetChannels  []string `json:"target_channels"` // Initial channels from config
 }
 

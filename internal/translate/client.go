@@ -8,10 +8,12 @@ import (
 	"log"
 	"net/http"
 	"time"
+
+	lara_sdk "github.com/translated/lara-go/lara"
 )
 
 type Translator interface {
-	Translate(text string, source string) (*TranslateResponse, error)
+	Translate(text string, source string, context []string) (*TranslateResponse, error)
 	DisplayName() string
 }
 
@@ -63,7 +65,7 @@ type TranslateResponse struct {
 	Error          string `json:"error,omitempty"`
 }
 
-func (c *TranslateAPI) Translate(text string, source string) (*TranslateResponse, error) {
+func (c *TranslateAPI) Translate(text string, source string, context []string) (*TranslateResponse, error) {
 	log.Printf("Translating text with TranslateAPI: %s", text)
 	reqBody := TranslateRequest{
 		Text:   text,
@@ -126,7 +128,7 @@ type MyMemoryResponse struct {
 	} `json:"matches"`
 }
 
-func (m *MyMemory) Translate(text string, source string) (*TranslateResponse, error) {
+func (m *MyMemory) Translate(text string, source string, context []string) (*TranslateResponse, error) {
 	log.Printf("Translating text with MyMemory: %s", text)
 	
 	if source == "" || source == "unknown" {
@@ -177,3 +179,104 @@ func (m *MyMemory) Translate(text string, source string) (*TranslateResponse, er
 	}, nil
 }
 
+type LaraTranslate struct {
+	Translator *lara_sdk.Translator
+}
+
+func NewLaraTranslate(keyID, keySecret string) *LaraTranslate {
+	credentials := lara_sdk.NewCredentials(keyID, keySecret)
+	lara := lara_sdk.NewTranslator(credentials, nil)
+	return &LaraTranslate{
+		Translator: lara,
+	}
+}
+
+func (l *LaraTranslate) DisplayName() string {
+	return "LaraTranslate"
+}
+
+func (l *LaraTranslate) Translate(text string, source string, context []string) (*TranslateResponse, error) {
+	log.Printf("Translating text with LaraTranslate: %s", text)
+
+	var blocks []lara_sdk.TextBlock
+
+	// Add context messages as non-translatable blocks
+	for _, ctxMsg := range context {
+		blocks = append(blocks, lara_sdk.TextBlock{
+			Text:         ctxMsg,
+			Translatable: false,
+		})
+	}
+
+	// Add target message as translatable block
+	blocks = append(blocks, lara_sdk.TextBlock{
+		Text:         text,
+		Translatable: true,
+	})
+
+	if source == "" || source == "unknown" {
+		source = "auto"
+	}
+
+	res, err := l.Translator.Translate(blocks, source, "en", lara_sdk.TranslateOptions{
+		ContentType: "text/plain",
+		TimeoutMs:   5000,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if res.Translation.String == nil {
+		return nil, fmt.Errorf("lara returned no translation")
+	}
+
+	translatedText := *res.Translation.String
+
+	return &TranslateResponse{
+		TranslatedText: translatedText,
+		SourceLanguage: source,
+		TargetLanguage: "en",
+	}, nil
+}
+
+type LaraTranslate2 struct {
+	Translator *lara_sdk.Translator
+}
+
+func NewLaraTranslate2(keyID, keySecret string) *LaraTranslate2 {
+	credentials := lara_sdk.NewCredentials(keyID, keySecret)
+	lara := lara_sdk.NewTranslator(credentials, nil)
+	return &LaraTranslate2{
+		Translator: lara,
+	}
+}
+
+func (l *LaraTranslate2) DisplayName() string {
+	return "LaraTranslate2"
+}
+
+func (l *LaraTranslate2) Translate(text string, source string, context []string) (*TranslateResponse, error) {
+	log.Printf("Translating text with LaraTranslate2: %s", text)
+
+	if source == "" || source == "unknown" {
+		source = "" // Omit for auto detection
+	}
+
+	res, err := l.Translator.Translate(text, source, "en", lara_sdk.TranslateOptions{
+		ContentType: "text/plain",
+		TimeoutMs:   2000,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if res.Translation.String == nil {
+		return nil, fmt.Errorf("lara returned no translation")
+	}
+
+	return &TranslateResponse{
+		TranslatedText: *res.Translation.String,
+		SourceLanguage: source,
+		TargetLanguage: "en",
+	}, nil
+}

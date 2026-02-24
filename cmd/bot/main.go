@@ -34,9 +34,11 @@ func main() {
 	// Init Translators
 	translateAPI := translate.NewTranslateAPI(cfg.TranslateAPIKey)
 	myMemory := translate.NewMyMemory(cfg.MyMemoryEmail)
+	laraTranslate := translate.NewLaraTranslate(cfg.LaraKeyID, cfg.LaraKeySecret)
+	laraTranslate2 := translate.NewLaraTranslate2(cfg.LaraKeyID, cfg.LaraKeySecret)
 
 	// Init Discord Handler
-	handler := discord.NewHandler(translateAPI, myMemory, cfg, *configPath, channelStore)
+	handler := discord.NewHandler(translateAPI, myMemory, laraTranslate, laraTranslate2, cfg, *configPath, channelStore)
 
 	// Init Discord Session
 	dg, err := discordgo.New("Bot " + cfg.DiscordToken)
@@ -74,7 +76,7 @@ func main() {
                 {
                     Type:        discordgo.ApplicationCommandOptionString,
                     Name:        "name",
-                    Description: "Backend name (TranslateAPI or MyMemory)",
+                    Description: "Backend name (TranslateAPI, MyMemory, LaraTranslate, or LaraTranslate2)",
                     Required:    false,
                 },
             },
