@@ -15,6 +15,7 @@ type Handler struct {
 	TranslateAPI  *translate.TranslateAPI
 	MyMemory      *translate.MyMemory
 	Cerebras      *translate.Cerebras
+	Mistral       *translate.Mistral
 	ActiveBackend string
 	Channels      *config.ChannelStore
 	WebhookCache  map[string]string // map[channelID]webhookID
@@ -22,7 +23,7 @@ type Handler struct {
 	ConfigPath    string
 }
 
-func NewHandler(tAPI *translate.TranslateAPI, mm *translate.MyMemory, cer *translate.Cerebras, cfg *config.Config, configPath string, cs *config.ChannelStore) *Handler {
+func NewHandler(tAPI *translate.TranslateAPI, mm *translate.MyMemory, cer *translate.Cerebras, mis *translate.Mistral, cfg *config.Config, configPath string, cs *config.ChannelStore) *Handler {
 	initialBackend := cfg.Backend
 	if initialBackend == "" {
 		initialBackend = "TranslateAPI"
@@ -31,6 +32,7 @@ func NewHandler(tAPI *translate.TranslateAPI, mm *translate.MyMemory, cer *trans
 		TranslateAPI:  tAPI,
 		MyMemory:      mm,
 		Cerebras:      cer,
+		Mistral:       mis,
 		ActiveBackend: initialBackend,
 		Channels:      cs,
 		WebhookCache:  make(map[string]string),
@@ -40,8 +42,13 @@ func NewHandler(tAPI *translate.TranslateAPI, mm *translate.MyMemory, cer *trans
 }
 
 func (h *Handler) activeTranslator() translate.Translator {
+	switch h.ActiveBackend {
+	case "MyMemory":
+		return h.MyMemory
 	case "Cerebras":
 		return h.Cerebras
+	case "Mistral":
+		return h.Mistral
 	default:
 		return h.TranslateAPI
 	}
@@ -143,11 +150,11 @@ func (h *Handler) handleCommandInteraction(s *discordgo.Session, i *discordgo.In
 		}
 
 		newBackend := options[0].StringValue()
-		if newBackend != "TranslateAPI" && newBackend != "MyMemory" && newBackend != "Cerebras" {
+		if newBackend != "TranslateAPI" && newBackend != "MyMemory" && newBackend != "Cerebras" && newBackend != "Mistral" {
 			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{
-					Content: "Invalid backend. Use 'TranslateAPI', 'MyMemory', or 'Cerebras'.",
+					Content: "Invalid backend. Use 'TranslateAPI', 'MyMemory', 'Cerebras', or 'Mistral'.",
 				},
 			})
 			return
@@ -191,7 +198,7 @@ func (h *Handler) handleComponentInteraction(s *discordgo.Session, i *discordgo.
 	currentBackend := parts[2]
 
 	// Cycle backend
-	backends := []string{"TranslateAPI", "MyMemory", "Cerebras"}
+	backends := []string{"TranslateAPI", "MyMemory", "Cerebras", "Mistral"}
 	nextBackend := backends[0]
 	for idx, b := range backends {
 		if b == currentBackend {
@@ -244,7 +251,7 @@ func (h *Handler) handleComponentInteraction(s *discordgo.Session, i *discordgo.
 				discordgo.ActionsRow{
 					Components: []discordgo.MessageComponent{
 						discordgo.Button{
-							Label:    nextBackend,
+							Label:    translator.DisplayName(),
 							Style:    discordgo.PrimaryButton,
 							CustomID: newCustomID,
 						},
@@ -256,8 +263,13 @@ func (h *Handler) handleComponentInteraction(s *discordgo.Session, i *discordgo.
 }
 
 func (h *Handler) getTranslator(backend string) translate.Translator {
+	switch backend {
+	case "MyMemory":
+		return h.MyMemory
 	case "Cerebras":
 		return h.Cerebras
+	case "Mistral":
+		return h.Mistral
 	default:
 		return h.TranslateAPI
 	}
@@ -296,10 +308,10 @@ func (h *Handler) sendWebhook(s *discordgo.Session, m *discordgo.MessageCreate, 
 
 	// Create cycle button for backend selection
 	// Encode original message ID and active backend into CustomID
-	currentBackend := h.ActiveBackend
-	customID := fmt.Sprintf("backend_cycle:%s:%s", m.ID, currentBackend)
+	activeTranslator := h.activeTranslator()
+	customID := fmt.Sprintf("backend_cycle:%s:%s", m.ID, h.ActiveBackend)
 	cycleButton := discordgo.Button{
-		Label:    currentBackend,
+		Label:    activeTranslator.DisplayName(),
 		Style:    discordgo.PrimaryButton,
 		CustomID: customID,
 	}

@@ -34,10 +34,11 @@ func main() {
 	// Init Translators
 	translateAPI := translate.NewTranslateAPI(cfg.TranslateAPIKey)
 	myMemory := translate.NewMyMemory(cfg.MyMemoryEmail)
-	cerebrasAPI := translate.NewCerebras(cfg.CerebrasAPIKey)
+	cerebrasAPI := translate.NewCerebras(cfg.CerebrasAPIKey, cfg.CerebrasModel)
+	mistralAPI := translate.NewMistral(cfg.MistralAPIKey, cfg.MistralModel)
 
 	// Init Discord Handler
-	handler := discord.NewHandler(translateAPI, myMemory, cerebrasAPI, cfg, *configPath, channelStore)
+	handler := discord.NewHandler(translateAPI, myMemory, cerebrasAPI, mistralAPI, cfg, *configPath, channelStore)
 
 	// Init Discord Session
 	dg, err := discordgo.New("Bot " + cfg.DiscordToken)
@@ -75,7 +76,7 @@ func main() {
                 {
                     Type:        discordgo.ApplicationCommandOptionString,
                     Name:        "name",
-                    Description: "Backend name (TranslateAPI, MyMemory, Cerebras)",
+                    Description: "Backend name (TranslateAPI, MyMemory, Cerebras, Mistral)",
                     Required:    false,
                 },
             },

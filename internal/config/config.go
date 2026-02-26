@@ -11,7 +11,10 @@ type Config struct {
 	TranslateAPIKey string   `json:"translate_api_key"`
 	MyMemoryEmail   string   `json:"mymemory_email"`
 	CerebrasAPIKey  string   `json:"cerebras_api_key"`
-	Backend         string   `json:"backend"`          // "TranslateAPI", "MyMemory", "Cerebras"
+	CerebrasModel   string   `json:"cerebras_model"`
+	MistralAPIKey   string   `json:"mistral_api_key"`
+	MistralModel    string   `json:"mistral_model"`
+	Backend         string   `json:"backend"`          // "TranslateAPI", "MyMemory", "Cerebras", "Mistral"
 	TargetChannels  []string `json:"target_channels"` // Initial channels from config
 }
 

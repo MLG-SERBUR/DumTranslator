@@ -2,6 +2,9 @@
     "discord_token": "YOUR_DISCORD_BOT_TOKEN",
     "translate_api_key": "YOUR_TRANSLATEAPI_KEY",
     "cerebras_api_key": "YOUR_CEREBRAS_API_KEY",
+    "cerebras_model": "gpt-oss-120b",
+    "mistral_api_key": "YOUR_MISTRAL_API_KEY",
+    "mistral_model": "mistral-large-latest",
     "mymemory_email": "YOUR_EMAIL@example.com",
     "backend": "TranslateAPI",
     "target_channels": []

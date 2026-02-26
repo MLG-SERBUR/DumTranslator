@@ -211,26 +211,31 @@ type ChatResponse struct {
 
 type Cerebras struct {
 	ApiKey string
+	Model  string
 	HTTP   *http.Client
 }
 
-func NewCerebras(apiKey string) *Cerebras {
+func NewCerebras(apiKey string, model string) *Cerebras {
+	if model == "" {
+		model = "gpt-oss-120b"
+	}
 	return &Cerebras{
 		ApiKey: apiKey,
+		Model:  model,
 		HTTP:   &http.Client{Timeout: 15 * time.Second},
 	}
 }
 
 func (c *Cerebras) DisplayName() string {
-	return "Cerebras"
+	return fmt.Sprintf("Cerebras (%s)", c.Model)
 }
 
 func (c *Cerebras) Translate(text string, source string) (*TranslateResponse, error) {
-	log.Printf("Translating text with Cerebras: %s", text)
+	log.Printf("Translating text with Cerebras (%s): %s", c.Model, text)
 
 	prompt := fmt.Sprintf("only translate this text to english, nothing else: %s", text)
 	reqBody := ChatRequest{
-		Model: "gpt-oss-120b",
+		Model: c.Model,
 		Messages: []ChatMessage{
 			{Role: "user", Content: prompt},
 		},
@@ -270,6 +275,80 @@ func (c *Cerebras) Translate(text string, source string) (*TranslateResponse, er
 
 	if len(chatResp.Choices) == 0 {
 		return nil, fmt.Errorf("no choices returned from Cerebras")
+	}
+
+	return &TranslateResponse{
+		TranslatedText: chatResp.Choices[0].Message.Content,
+		SourceLanguage: source, // Use detected source
+		TargetLanguage: "en",
+	}, nil
+}
+
+type Mistral struct {
+	ApiKey string
+	Model  string
+	HTTP   *http.Client
+}
+
+func NewMistral(apiKey string, model string) *Mistral {
+	if model == "" {
+		model = "mistral-large-latest"
+	}
+	return &Mistral{
+		ApiKey: apiKey,
+		Model:  model,
+		HTTP:   &http.Client{Timeout: 15 * time.Second},
+	}
+}
+
+func (m *Mistral) DisplayName() string {
+	return fmt.Sprintf("Mistral (%s)", m.Model)
+}
+
+func (m *Mistral) Translate(text string, source string) (*TranslateResponse, error) {
+	log.Printf("Translating text with Mistral (%s): %s", m.Model, text)
+
+	prompt := fmt.Sprintf("only translate this text to english, nothing else: %s", text)
+	reqBody := ChatRequest{
+		Model: m.Model,
+		Messages: []ChatMessage{
+			{Role: "user", Content: prompt},
+		},
+		Temperature: 0,
+		Stream:      false,
+	}
+
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", "https://api.mistral.ai/v1/chat/completions", bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+m.ApiKey)
+
+	resp, err := m.HTTP.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("mistral api returned status: %d, body: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var chatResp ChatResponse
+	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
+		return nil, err
+	}
+
+	if len(chatResp.Choices) == 0 {
+		return nil, fmt.Errorf("no choices returned from Mistral")
 	}
 
 	return &TranslateResponse{
