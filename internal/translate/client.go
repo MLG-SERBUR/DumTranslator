@@ -66,6 +66,9 @@ type TranslateResponse struct {
 
 func (c *TranslateAPI) Translate(text string, source string) (*TranslateResponse, error) {
 	log.Printf("Translating text with TranslateAPI: %s", text)
+	if source == "unknown" {
+		source = ""
+	}
 	reqBody := TranslateRequest{
 		Text:   text,
 		Source: source,
