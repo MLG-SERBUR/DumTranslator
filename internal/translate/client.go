@@ -358,3 +358,78 @@ func (m *Mistral) Translate(text string, source string) (*TranslateResponse, err
 	}, nil
 }
 
+type ArliAI struct {
+	ApiKey string
+	Model  string
+	HTTP   *http.Client
+}
+
+func NewArliAI(apiKey string, model string) *ArliAI {
+	if model == "" {
+		model = "Gemma-3-27B-it"
+	}
+	return &ArliAI{
+		ApiKey: apiKey,
+		Model:  model,
+		HTTP:   &http.Client{Timeout: 15 * time.Second},
+	}
+}
+
+func (a *ArliAI) DisplayName() string {
+	return fmt.Sprintf("ArliAI (%s)", a.Model)
+}
+
+func (a *ArliAI) Translate(text string, source string) (*TranslateResponse, error) {
+	log.Printf("Translating text with ArliAI (%s): %s", a.Model, text)
+
+	prompt := fmt.Sprintf("only translate this text to english, nothing else: %s", text)
+	reqBody := ChatRequest{
+		Model: a.Model,
+		Messages: []ChatMessage{
+			{Role: "user", Content: prompt},
+		},
+		Temperature: 0,
+		Stream:      false,
+	}
+
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", "https://api.arliai.com/v1/chat/completions", bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+a.ApiKey)
+
+	resp, err := a.HTTP.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("arliai api returned status: %d, body: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var chatResp ChatResponse
+	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
+		return nil, err
+	}
+
+	if len(chatResp.Choices) == 0 {
+		return nil, fmt.Errorf("no choices returned from ArliAI")
+	}
+
+	return &TranslateResponse{
+		TranslatedText: chatResp.Choices[0].Message.Content,
+		SourceLanguage: source, // Use detected source
+		TargetLanguage: "en",
+	}, nil
+}
+
+

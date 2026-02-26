@@ -14,7 +14,9 @@ type Config struct {
 	CerebrasModel   string   `json:"cerebras_model"`
 	MistralAPIKey   string   `json:"mistral_api_key"`
 	MistralModel    string   `json:"mistral_model"`
-	Backend         string   `json:"backend"`          // "TranslateAPI", "MyMemory", "Cerebras", "Mistral"
+	ArliAIAPIKey    string   `json:"arliai_api_key"`
+	ArliAIModel     string   `json:"arliai_model"`
+	Backend         string   `json:"backend"`          // "TranslateAPI", "MyMemory", "Cerebras", "Mistral", "ArliAI"
 	TargetChannels  []string `json:"target_channels"` // Initial channels from config
 }
 

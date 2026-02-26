@@ -5,6 +5,8 @@
     "cerebras_model": "gpt-oss-120b",
     "mistral_api_key": "YOUR_MISTRAL_API_KEY",
     "mistral_model": "mistral-large-latest",
+    "arliai_api_key": "YOUR_ARLIAI_API_KEY",
+    "arliai_model": "Gemma-3-27B-it",
     "mymemory_email": "YOUR_EMAIL@example.com",
     "backend": "TranslateAPI",
     "target_channels": []
