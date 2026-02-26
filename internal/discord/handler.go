@@ -226,24 +226,7 @@ func (h *Handler) handleComponentInteraction(s *discordgo.Session, i *discordgo.
 		return
 	}
 
-	// Update the webhook message with the new translation
-	_, err = s.ChannelMessageEditComplex(&discordgo.MessageEdit{
-		ID:      i.Message.ID,
-		Channel: i.ChannelID,
-		Content: &resp.TranslatedText,
-	})
-
-	if err != nil {
-		log.Printf("Error editing message: %v", err)
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: "Failed to update message: " + err.Error(),
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		})
-		return
-	}
+	// Update the interaction response already handles updating the message
 
 	// Respond to the interaction to acknowledge it
 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
