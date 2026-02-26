@@ -2,8 +2,6 @@
     "discord_token": "YOUR_DISCORD_BOT_TOKEN",
     "translate_api_key": "YOUR_TRANSLATEAPI_KEY",
     "mymemory_email": "YOUR_EMAIL@example.com",
-    "lara_key_id": "YOUR_LARA_KEY_ID",
-    "lara_key_secret": "YOUR_LARA_KEY_SECRET",
     "backend": "TranslateAPI",
     "target_channels": []
 }

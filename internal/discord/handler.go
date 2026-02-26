@@ -3,7 +3,6 @@ package discord
 import (
 	"fmt"
 	"log"
-	"time"
 
 
 	"github.com/bwmarrin/discordgo"
@@ -12,46 +11,36 @@ import (
 )
 
 type Handler struct {
-	TranslateAPI  *translate.TranslateAPI
-	MyMemory      *translate.MyMemory
-	LaraTranslate *translate.LaraTranslate
-	LaraTranslate2 *translate.LaraTranslate2
+	TranslateAPI *translate.TranslateAPI
+	MyMemory     *translate.MyMemory
 	ActiveBackend string
-	Channels      *config.ChannelStore
-	WebhookCache  map[string]string // map[channelID]webhookID
-	Config        *config.Config
-	ConfigPath    string
+	Channels     *config.ChannelStore
+	WebhookCache map[string]string // map[channelID]webhookID
+	Config       *config.Config
+	ConfigPath   string
 }
 
-func NewHandler(tAPI *translate.TranslateAPI, mm *translate.MyMemory, lara *translate.LaraTranslate, lara2 *translate.LaraTranslate2, cfg *config.Config, configPath string, cs *config.ChannelStore) *Handler {
+func NewHandler(tAPI *translate.TranslateAPI, mm *translate.MyMemory, cfg *config.Config, configPath string, cs *config.ChannelStore) *Handler {
 	initialBackend := cfg.Backend
 	if initialBackend == "" {
 		initialBackend = "TranslateAPI"
 	}
 	return &Handler{
-		TranslateAPI:   tAPI,
-		MyMemory:       mm,
-		LaraTranslate:  lara,
-		LaraTranslate2: lara2,
-		ActiveBackend:  initialBackend,
-		Channels:       cs,
-		WebhookCache:   make(map[string]string),
-		Config:         cfg,
-		ConfigPath:     configPath,
+		TranslateAPI: tAPI,
+		MyMemory:     mm,
+		ActiveBackend: initialBackend,
+		Channels:     cs,
+		WebhookCache: make(map[string]string),
+		Config:       cfg,
+		ConfigPath:   configPath,
 	}
 }
 
 func (h *Handler) activeTranslator() translate.Translator {
-	switch h.ActiveBackend {
-	case "MyMemory":
+	if h.ActiveBackend == "MyMemory" {
 		return h.MyMemory
-	case "LaraTranslate":
-		return h.LaraTranslate
-	case "LaraTranslate2":
-		return h.LaraTranslate2
-	default:
-		return h.TranslateAPI
 	}
+	return h.TranslateAPI
 }
 
 
@@ -80,30 +69,8 @@ func (h *Handler) MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate
 	// Detect Language for MyMemory and TranslateAPI
 	source := translate.DetectLanguage(m.Content)
 
-	// Context collection for LaraTranslate
-	var context []string
-	if h.ActiveBackend == "LaraTranslate" {
-		// Fetch recent messages (past 2 minutes)
-		// discordgo.Session.ChannelMessages(channelID, limit, beforeID, afterID, aroundID)
-		messages, err := s.ChannelMessages(m.ChannelID, 10, m.ID, "", "")
-		if err == nil {
-			// Messages are returned newest first. We want them in chronological order.
-			// And filtered by time.
-			now := time.Now()
-			for i := len(messages) - 1; i >= 0; i-- {
-				msg := messages[i]
-				msgTime := msg.Timestamp
-				if now.Sub(msgTime) < 2*time.Minute {
-					context = append(context, msg.Content)
-				}
-			}
-		} else {
-			log.Printf("Error fetching context messages: %v", err)
-		}
-	}
-
 	// Translate
-	resp, err := h.activeTranslator().Translate(m.Content, source, context)
+	resp, err := h.activeTranslator().Translate(m.Content, source)
 	if err != nil {
 		log.Printf("Translation error: %v", err)
 		return
@@ -167,11 +134,11 @@ func (h *Handler) InteractionCreate(s *discordgo.Session, i *discordgo.Interacti
         }
         
         newBackend := options[0].StringValue()
-        if newBackend != "TranslateAPI" && newBackend != "MyMemory" && newBackend != "LaraTranslate" && newBackend != "LaraTranslate2" {
+        if newBackend != "TranslateAPI" && newBackend != "MyMemory" {
             s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
                 Type: discordgo.InteractionResponseChannelMessageWithSource,
                 Data: &discordgo.InteractionResponseData{
-                    Content: "Invalid backend. Use 'TranslateAPI', 'MyMemory', 'LaraTranslate', or 'LaraTranslate2'.",
+                    Content: "Invalid backend. Use 'TranslateAPI' or 'MyMemory'.",
                 },
             })
             return
