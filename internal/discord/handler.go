@@ -173,31 +173,30 @@ func (h *Handler) handleComponentInteraction(s *discordgo.Session, i *discordgo.
 		return
 	}
 
-	// Check if this is our backend select menu
+	// Check if this is our backend cycle button
 	customID := i.MessageComponentData().CustomID
-	if !strings.HasPrefix(customID, "backend_select:") {
+	if !strings.HasPrefix(customID, "backend_cycle:") {
 		return
 	}
 
-	// Get the original message ID from the CustomID
+	// Get the original message ID and current backend from the CustomID
 	parts := strings.Split(customID, ":")
-	if len(parts) < 2 {
+	if len(parts) < 3 {
 		return
 	}
 	originalMessageID := parts[1]
+	currentBackend := parts[2]
 
-	// Get the selected backend
-	values := i.MessageComponentData().Values
-	if len(values) == 0 {
-		return
+	// Cycle backend
+	nextBackend := "TranslateAPI"
+	if currentBackend == "TranslateAPI" {
+		nextBackend = "MyMemory"
 	}
-	selectedBackend := values[0]
 
 	// Get the original message that triggered this translation
 	originalMsg, err := s.ChannelMessage(i.ChannelID, originalMessageID)
 	if err != nil {
 		log.Printf("Error getting original message: %v", err)
-		// Fallback to the old logic or ephemeral error
 		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
@@ -209,13 +208,13 @@ func (h *Handler) handleComponentInteraction(s *discordgo.Session, i *discordgo.
 	}
 	originalContent := originalMsg.Content
 
-	// Translate with the selected backend
-	translator := h.getTranslator(selectedBackend)
+	// Translate with the next backend
+	translator := h.getTranslator(nextBackend)
 	source := translate.DetectLanguage(originalContent)
 
 	resp, err := translator.Translate(originalContent, source)
 	if err != nil {
-		log.Printf("Translation error with %s: %v", selectedBackend, err)
+		log.Printf("Translation error with %s: %v", nextBackend, err)
 		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
@@ -227,6 +226,7 @@ func (h *Handler) handleComponentInteraction(s *discordgo.Session, i *discordgo.
 	}
 
 	// Update the interaction response already handles updating the message
+	newCustomID := fmt.Sprintf("backend_cycle:%s:%s", originalMessageID, nextBackend)
 
 	// Respond to the interaction to acknowledge it
 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -236,23 +236,10 @@ func (h *Handler) handleComponentInteraction(s *discordgo.Session, i *discordgo.
 			Components: []discordgo.MessageComponent{
 				discordgo.ActionsRow{
 					Components: []discordgo.MessageComponent{
-						&discordgo.SelectMenu{
-							CustomID:    customID, // Keep the same CustomID with message ID
-							Placeholder: "Select translation backend...",
-							Options: []discordgo.SelectMenuOption{
-								{
-									Label:       "TranslateAPI",
-									Value:       "TranslateAPI",
-									Description: "Use TranslateAPI backend",
-									Default:     selectedBackend == "TranslateAPI",
-								},
-								{
-									Label:       "MyMemory",
-									Value:       "MyMemory",
-									Description: "Use MyMemory backend",
-									Default:     selectedBackend == "MyMemory",
-								},
-							},
+						discordgo.Button{
+							Label:    nextBackend,
+							Style:    discordgo.PrimaryButton,
+							CustomID: newCustomID,
 						},
 					},
 				},
@@ -299,34 +286,24 @@ func (h *Handler) sendWebhook(s *discordgo.Session, m *discordgo.MessageCreate, 
 	webhookID = targetWebhook.ID
 	webhookToken := targetWebhook.Token
 
-	// Create select menu component for backend selection
-	// Encode original message ID into CustomID
-	customID := fmt.Sprintf("backend_select:%s", m.ID)
-	backendSelect := &discordgo.SelectMenu{
-		CustomID:    customID,
-		Placeholder: "Select translation backend...",
-		Options: []discordgo.SelectMenuOption{
-			{
-				Label:       "TranslateAPI",
-				Value:       "TranslateAPI",
-				Description: "Use TranslateAPI backend",
-			},
-			{
-				Label:       "MyMemory",
-				Value:       "MyMemory",
-				Description: "Use MyMemory backend",
-			},
-		},
+	// Create cycle button for backend selection
+	// Encode original message ID and active backend into CustomID
+	currentBackend := h.ActiveBackend
+	customID := fmt.Sprintf("backend_cycle:%s:%s", m.ID, currentBackend)
+	cycleButton := discordgo.Button{
+		Label:    currentBackend,
+		Style:    discordgo.PrimaryButton,
+		CustomID: customID,
 	}
 
-	// Create action row with the select menu
+	// Create action row with the button
 	actionRow := discordgo.ActionsRow{
-		Components: []discordgo.MessageComponent{backendSelect},
+		Components: []discordgo.MessageComponent{cycleButton},
 	}
 
 	_, err = s.WebhookExecute(webhookID, webhookToken, true, &discordgo.WebhookParams{
 		Content:    content,
-		Username:   m.Author.Username + " (" + h.activeTranslator().DisplayName() + ")",
+		Username:   m.Author.Username + " (translated)",
 		AvatarURL:  m.Author.AvatarURL(""),
 		Components: []discordgo.MessageComponent{actionRow},
 	})
