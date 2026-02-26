@@ -9,8 +9,9 @@ import (
 type Config struct {
 	DiscordToken    string   `json:"discord_token"`
 	TranslateAPIKey string   `json:"translate_api_key"`
-	MyMemoryEmail   string   `json:"mymemory_email"` // Optional email for MyMemory
-	Backend         string   `json:"backend"`          // "TranslateAPI" or "MyMemory"
+	MyMemoryEmail   string   `json:"mymemory_email"`
+	CerebrasAPIKey  string   `json:"cerebras_api_key"`
+	Backend         string   `json:"backend"`          // "TranslateAPI", "MyMemory", "Cerebras"
 	TargetChannels  []string `json:"target_channels"` // Initial channels from config
 }
 

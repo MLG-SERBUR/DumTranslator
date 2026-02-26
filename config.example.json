@@ -1,6 +1,7 @@
 {
     "discord_token": "YOUR_DISCORD_BOT_TOKEN",
     "translate_api_key": "YOUR_TRANSLATEAPI_KEY",
+    "cerebras_api_key": "YOUR_CEREBRAS_API_KEY",
     "mymemory_email": "YOUR_EMAIL@example.com",
     "backend": "TranslateAPI",
     "target_channels": []

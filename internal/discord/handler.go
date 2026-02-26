@@ -12,36 +12,39 @@ import (
 )
 
 type Handler struct {
-	TranslateAPI *translate.TranslateAPI
-	MyMemory     *translate.MyMemory
+	TranslateAPI  *translate.TranslateAPI
+	MyMemory      *translate.MyMemory
+	Cerebras      *translate.Cerebras
 	ActiveBackend string
-	Channels     *config.ChannelStore
-	WebhookCache map[string]string // map[channelID]webhookID
-	Config       *config.Config
-	ConfigPath   string
+	Channels      *config.ChannelStore
+	WebhookCache  map[string]string // map[channelID]webhookID
+	Config        *config.Config
+	ConfigPath    string
 }
 
-func NewHandler(tAPI *translate.TranslateAPI, mm *translate.MyMemory, cfg *config.Config, configPath string, cs *config.ChannelStore) *Handler {
+func NewHandler(tAPI *translate.TranslateAPI, mm *translate.MyMemory, cer *translate.Cerebras, cfg *config.Config, configPath string, cs *config.ChannelStore) *Handler {
 	initialBackend := cfg.Backend
 	if initialBackend == "" {
 		initialBackend = "TranslateAPI"
 	}
 	return &Handler{
-		TranslateAPI: tAPI,
-		MyMemory:     mm,
+		TranslateAPI:  tAPI,
+		MyMemory:      mm,
+		Cerebras:      cer,
 		ActiveBackend: initialBackend,
-		Channels:     cs,
-		WebhookCache: make(map[string]string),
-		Config:       cfg,
-		ConfigPath:   configPath,
+		Channels:      cs,
+		WebhookCache:  make(map[string]string),
+		Config:        cfg,
+		ConfigPath:    configPath,
 	}
 }
 
 func (h *Handler) activeTranslator() translate.Translator {
-	if h.ActiveBackend == "MyMemory" {
-		return h.MyMemory
+	case "Cerebras":
+		return h.Cerebras
+	default:
+		return h.TranslateAPI
 	}
-	return h.TranslateAPI
 }
 
 
@@ -140,11 +143,11 @@ func (h *Handler) handleCommandInteraction(s *discordgo.Session, i *discordgo.In
 		}
 
 		newBackend := options[0].StringValue()
-		if newBackend != "TranslateAPI" && newBackend != "MyMemory" {
+		if newBackend != "TranslateAPI" && newBackend != "MyMemory" && newBackend != "Cerebras" {
 			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{
-					Content: "Invalid backend. Use 'TranslateAPI' or 'MyMemory'.",
+					Content: "Invalid backend. Use 'TranslateAPI', 'MyMemory', or 'Cerebras'.",
 				},
 			})
 			return
@@ -188,9 +191,13 @@ func (h *Handler) handleComponentInteraction(s *discordgo.Session, i *discordgo.
 	currentBackend := parts[2]
 
 	// Cycle backend
-	nextBackend := "TranslateAPI"
-	if currentBackend == "TranslateAPI" {
-		nextBackend = "MyMemory"
+	backends := []string{"TranslateAPI", "MyMemory", "Cerebras"}
+	nextBackend := backends[0]
+	for idx, b := range backends {
+		if b == currentBackend {
+			nextBackend = backends[(idx+1)%len(backends)]
+			break
+		}
 	}
 
 	// Get the original message that triggered this translation
@@ -249,10 +256,11 @@ func (h *Handler) handleComponentInteraction(s *discordgo.Session, i *discordgo.
 }
 
 func (h *Handler) getTranslator(backend string) translate.Translator {
-	if backend == "MyMemory" {
-		return h.MyMemory
+	case "Cerebras":
+		return h.Cerebras
+	default:
+		return h.TranslateAPI
 	}
-	return h.TranslateAPI
 }
 
 func (h *Handler) sendWebhook(s *discordgo.Session, m *discordgo.MessageCreate, content string) error {
@@ -301,9 +309,17 @@ func (h *Handler) sendWebhook(s *discordgo.Session, m *discordgo.MessageCreate, 
 		Components: []discordgo.MessageComponent{cycleButton},
 	}
 
+	// Use display name instead of just username
+	displayName := m.Author.Username
+	if m.Member != nil && m.Member.Nick != "" {
+		displayName = m.Member.Nick
+	} else if m.Author.GlobalName != "" {
+		displayName = m.Author.GlobalName
+	}
+
 	_, err = s.WebhookExecute(webhookID, webhookToken, true, &discordgo.WebhookParams{
 		Content:    content,
-		Username:   m.Author.Username + " (translated)",
+		Username:   displayName + " (translated)",
 		AvatarURL:  m.Author.AvatarURL(""),
 		Components: []discordgo.MessageComponent{actionRow},
 	})
