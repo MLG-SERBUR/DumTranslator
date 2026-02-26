@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -128,17 +129,27 @@ type MyMemoryResponse struct {
 
 func (m *MyMemory) Translate(text string, source string) (*TranslateResponse, error) {
 	log.Printf("Translating text with MyMemory: %s", text)
-	
+
 	if source == "" || source == "unknown" {
 		source = "auto"
 	}
-	
-	url := "https://api.mymemory.translated.net/get?q=" + fmt.Sprintf("%s", text) + "&langpair=" + source + "|en"
+
+	// 1. Create a Values struct to hold query parameters
+	params := url.Values{}
+	params.Set("q", text)                       // This automatically encodes Arabic/Spaces
+	params.Set("langpair", source+"|en")        // This handles the pipe character "|"
 	if m.Email != "" {
-		url += "&de=" + m.Email
+		params.Set("de", m.Email)
 	}
 
-	resp, err := m.HTTP.Get(url)
+	// 2. Construct the full URL with encoded parameters
+	// "Encode()" turns "هذا اختبار" into "%D9%85%D9%87..."
+	requestURL := "https://api.mymemory.translated.net/get?" + params.Encode()
+
+	// 3. DEBUG LOGGING (As requested)
+	log.Printf("DEBUG: Requesting URL: %s", requestURL)
+
+	resp, err := m.HTTP.Get(requestURL)
 	if err != nil {
 		return nil, err
 	}
@@ -155,6 +166,7 @@ func (m *MyMemory) Translate(text string, source string) (*TranslateResponse, er
 	}
 
 	if mmResp.ResponseStatus != http.StatusOK {
+		// MyMemory sometimes returns 200 OK in headers but 403/500 in JSON body
 		return nil, fmt.Errorf("mymemory error status: %d", mmResp.ResponseStatus)
 	}
 
@@ -162,9 +174,6 @@ func (m *MyMemory) Translate(text string, source string) (*TranslateResponse, er
 	sourceLang := "unknown"
 	if len(mmResp.Matches) > 0 {
 		sourceLang = mmResp.Matches[0].SourceLanguage
-		// MyMemory often returns ISO codes. TranslateAPI uses "ar", "ko". 
-		// MyMemory might return "ar-SA" or just "ar".
-		// We'll normalize to 2 chars for the check in handler.go.
 		if len(sourceLang) > 2 {
 			sourceLang = sourceLang[:2]
 		}
