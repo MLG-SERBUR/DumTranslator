@@ -249,6 +249,9 @@ func (h *Handler) handleComponentInteraction(s *discordgo.Session, i *discordgo.
 		log.Printf("Translation error with %s: %v", nextBackend, err)
 		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 			Content: ptr(fmt.Sprintf("Translation failed with %s: %v.", nextBackend, err)),
+			Components: &[]discordgo.MessageComponent{
+				h.createBackendSelectMenu(originalMessageID, nextBackend),
+			},
 		})
 		return
 	}
