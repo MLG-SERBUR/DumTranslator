@@ -419,10 +419,10 @@ func (b *AudioBuffer) ShouldProcess() (bool, bool) {
 		return true, true
 	}
 
-	// 2. Natural Silence: 800ms
-
-	// Added a minimum duration of 2 seconds to prevent processing tiny clips
-	if silence > 800*time.Millisecond && duration >= 2*time.Second {
+	// 2. Natural Silence: 2 seconds (Increased from 800ms)
+	// Because duration includes the silence time, if silence is > 2s, 
+	// duration is automatically > 2s. We can drop the minimum duration check!
+	if silence > 2*time.Second {
 		return true, false
 	}
 
