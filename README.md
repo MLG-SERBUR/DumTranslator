@@ -31,12 +31,11 @@ A powerful Discord bot that automatically translates messages and provides real-
 
 - Cerebras
 - Mistral
+- ArliAI (currently disabled in code due to unreliable uptime)
 
 **Direct API:**
 - TranslateAPI
 - MyMemory
-
-- Google
 
 For API key setup, refer to each service's documentation.
 
