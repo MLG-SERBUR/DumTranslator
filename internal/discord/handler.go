@@ -242,7 +242,7 @@ func (h *Handler) handleCommandInteraction(s *discordgo.Session, i *discordgo.In
 					Content: "Captions enabled. I've joined the voice channel.",
 				},
 			})
-			log.Printf("Started captions for guild %s in channel %s", i.GuildID, vs.ChannelID)
+			log.Printf("Started captions for guild %s in channel %s", i.GuildID, i.ChannelID)
 		case "off":
 			err := h.Captions.Stop(i.GuildID)
 			response := "Captions disabled. I've left the voice channel."
