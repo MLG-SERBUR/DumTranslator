@@ -302,7 +302,7 @@ func (m *Manager) processChunk(vs *VoiceSession, ssrc uint32, packets []*discord
 	oggData := buf.Bytes()
 
 	// 2. Send to Groq - using .ogg extension
-	text, err := m.Groq.TranslateAudio(oggData, "audio.ogg")
+	text, debugStr, err := m.Groq.TranslateAudio(oggData, "audio.ogg")
 	if err != nil {
 		log.Printf("Groq error: %v", err)
 		return
@@ -310,13 +310,14 @@ func (m *Manager) processChunk(vs *VoiceSession, ssrc uint32, packets []*discord
 
 	text = strings.TrimSpace(text)
 	if text == "" {
+		// It's empty (dropped/hallucination); don't update embed, keep last successful debug
 		return
 	}
 
-	m.addCaption(vs, username, text)
+	m.addCaption(vs, username, text, debugStr)
 }
 
-func (m *Manager) addCaption(vs *VoiceSession, username, text string) {
+func (m *Manager) addCaption(vs *VoiceSession, username, text string, debugStr string) {
 	vs.mu.Lock()
 	defer vs.mu.Unlock()
 
@@ -328,12 +329,19 @@ func (m *Manager) addCaption(vs *VoiceSession, username, text string) {
 
 	content := strings.Join(vs.UserLogs, "\n")
 
+	footerText := debugStr
+
+	// Discord limits footer length to 2048 chars, truncate just in case
+	if len(footerText) > 2048 {
+		footerText = footerText[:2045] + "..."
+	}
+
 	embed := &discordgo.MessageEmbed{
-		Title:       "Translated Captions",
+		Title:       "Groq (Large-Whisper-v3)",
 		Description: content,
 		Color:       0x00ff00,
 		Footer: &discordgo.MessageEmbedFooter{
-			Text: "Powered by Groq (Large-Whisper-v3)",
+			Text: footerText,
 		},
 	}
 

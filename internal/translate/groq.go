@@ -45,18 +45,18 @@ type GroqSegment struct {
 	NoSpeechProb     float64 `json:"no_speech_prob"`
 }
 
-func (c *GroqClient) TranslateAudio(audioData []byte, filename string) (string, error) {
+func (c *GroqClient) TranslateAudio(audioData []byte, filename string) (string, string, error) {
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 
 	// 1. Add the audio file
 	part, err := writer.CreateFormFile("file", filename)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	_, err = io.Copy(part, bytes.NewReader(audioData))
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	// 2. Add standard fields
@@ -72,13 +72,13 @@ func (c *GroqClient) TranslateAudio(audioData []byte, filename string) (string, 
 
 	err = writer.Close()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	// Note: We use translations to output English, or you can use transcriptions for original language
 	req, err := http.NewRequest("POST", "https://api.groq.com/openai/v1/audio/translations", body)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	req.Header.Set("Content-Type", writer.FormDataContentType())
@@ -86,26 +86,30 @@ func (c *GroqClient) TranslateAudio(audioData []byte, filename string) (string, 
 
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("groq api returned status: %d, body: %s", resp.StatusCode, string(respBody))
+		return "", "", fmt.Errorf("groq api returned status: %d, body: %s", resp.StatusCode, string(respBody))
 	}
 
 	var result GroqVerboseResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	// 5. PROCESS SEGMENTS
 	var validTextChunks []string
+	var debugLogs []string
 	for _, seg := range result.Segments {
+		// Collect debug info for the footer
+		debugLogs = append(debugLogs, fmt.Sprintf("no_speech: %.2f, comp: %.2f", seg.NoSpeechProb, seg.CompressionRatio))
+
 		// Rule A: If Whisper is > 60% sure there is no actual speech here, drop it.
 		// This mathematically catches silence/breathing turning into "Thank you."
-		log.Printf("Processing segment: '%s' (no_speech_prob=%.2f, compression_ratio=%.2f)", seg.Text, seg.NoSpeechProb, seg.CompressionRatio)
+		//log.Printf("Processing segment: '%s' (no_speech_prob=%.2f, compression_ratio=%.2f)", seg.Text, seg.NoSpeechProb, seg.CompressionRatio)
 		if seg.NoSpeechProb > 0.6 {
 			log.Printf("high no_speech_prob: '%s' (no_speech_prob=%.2f)", seg.Text, seg.NoSpeechProb)
 			continue
@@ -130,7 +134,7 @@ func (c *GroqClient) TranslateAudio(audioData []byte, filename string) (string, 
 
 	// Combine valid segments back together
 	finalText := strings.Join(validTextChunks, " ")
-	return strings.TrimSpace(finalText), nil
+	return strings.TrimSpace(finalText), strings.Join(debugLogs, " | "), nil
 }
 
 // filterHallucinations catches common Whisperisms that slip past the math filters
