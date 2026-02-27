@@ -116,7 +116,7 @@ func (c *GroqClient) TranslateAudio(audioData []byte, filename string) (string, 
 
 		// Rule B: If the compression ratio is unusually high, it's a repeating loop hallucination.
 		// (e.g. "Thank you. Thank you. Thank you.")
-		if seg.CompressionRatio > 2.4 {
+		if seg.CompressionRatio > 2.0 {
 			log.Printf("high compression_ratio: '%s' (compression_ratio=%.2f)", seg.Text, seg.CompressionRatio)
 			continue
 		}

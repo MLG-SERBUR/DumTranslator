@@ -139,7 +139,7 @@ func (m *Manager) Start(guildID, channelID string, tcID string) error {
 		Description: "Listening for voices...",
 		Color:       0x00ff00,
 		Footer: &discordgo.MessageEmbedFooter{
-			Text: "Powered by Groq STT",
+			Text: "Powered by Groq (Large-Whisper-v3)",
 		},
 	}
 	msg, err := m.Session.ChannelMessageSendEmbed(tcID, embed)
