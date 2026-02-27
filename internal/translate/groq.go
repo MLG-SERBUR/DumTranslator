@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"mime/multipart"
 	"net/http"
 	"strings"
@@ -101,7 +102,7 @@ func (c *GroqClient) TranslateAudio(audioData []byte, filename string) (string, 
 	}
 
 	// 5. PROCESS SEGMENTS
-	var validTextChunks []string
+	var validSegments []GroqSegment
 	var debugLogs []string
 	for _, seg := range result.Segments {
 		// Collect debug info for the footer
@@ -111,6 +112,11 @@ func (c *GroqClient) TranslateAudio(audioData []byte, filename string) (string, 
 		// This mathematically catches silence/breathing turning into "Thank you."
 		if seg.NoSpeechProb > 0.2 {
 			log.Printf("high no_speech_prob: '%s' (no_speech_prob=%.2f)", seg.Text, seg.NoSpeechProb)
+			continue
+		}
+
+		if seg.AvgLogprob < -0.5 {
+			log.Printf("low avg_logprob: '%s' (avg_logprob=%.2f)", seg.Text, seg.AvgLogprob)
 			continue
 		}
 
@@ -128,9 +134,44 @@ func (c *GroqClient) TranslateAudio(audioData []byte, filename string) (string, 
 			continue
 		}
 
-		log.Printf("'%s' (no_speech_prob=%.2f, compression_ratio=%.2f)", seg.Text, seg.NoSpeechProb, seg.CompressionRatio)
+		// Update segment text with cleaned version
+		seg.Text = cleanedText
 
-		validTextChunks = append(validTextChunks, cleanedText)
+		log.Printf("'%s' (no_speech_prob=%.2f, compression_ratio=%.2f, avg_logprob=%.2f)", seg.Text, seg.NoSpeechProb, seg.CompressionRatio, seg.AvgLogprob)
+
+		// Check for overlapping segments
+		if len(validSegments) == 0 {
+			validSegments = append(validSegments, seg)
+		} else {
+			lastIdx := len(validSegments) - 1
+			lastSeg := validSegments[lastIdx]
+
+			overlapStart := math.Max(lastSeg.Start, seg.Start)
+			overlapEnd := math.Min(lastSeg.End, seg.End)
+			overlapDuration := overlapEnd - overlapStart
+			if overlapDuration < 0 {
+				overlapDuration = 0
+			}
+
+			lastDuration := lastSeg.End - lastSeg.Start
+			segDuration := seg.End - seg.Start
+			minDuration := math.Min(lastDuration, segDuration)
+
+			// If segments overlap by 50% or more of the smaller segment's duration,
+			// they are describing the same audio. Replace the last segment if the new one is longer.
+			if minDuration > 0 && overlapDuration >= 0.5*minDuration {
+				if len(strings.TrimSpace(seg.Text)) > len(strings.TrimSpace(lastSeg.Text)) {
+					validSegments[lastIdx] = seg
+				}
+			} else {
+				validSegments = append(validSegments, seg)
+			}
+		}
+	}
+
+	var validTextChunks []string
+	for _, seg := range validSegments {
+		validTextChunks = append(validTextChunks, seg.Text)
 	}
 
 	// Combine valid segments back together
