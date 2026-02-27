@@ -156,11 +156,11 @@ func (h *Handler) handleCommandInteraction(s *discordgo.Session, i *discordgo.In
 		}
 
 		newBackend := options[0].StringValue()
-		if newBackend != "TranslateAPI" && newBackend != "MyMemory" && newBackend != "Cerebras" && newBackend != "Mistral" && newBackend != "ArliAI" {
+		if newBackend != "TranslateAPI" && newBackend != "MyMemory" && newBackend != "Cerebras" && newBackend != "Mistral" {
 			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{
-					Content: "Invalid backend. Use 'TranslateAPI', 'MyMemory', 'Cerebras', 'Mistral', or 'ArliAI'.",
+					Content: "Invalid backend. Use 'TranslateAPI', 'MyMemory', 'Cerebras', or 'Mistral'.",
 				},
 			})
 			return
@@ -332,7 +332,7 @@ func (h *Handler) sendWebhook(s *discordgo.Session, m *discordgo.MessageCreate, 
 }
 
 func (h *Handler) createBackendSelectMenu(messageID string, activeBackend string) discordgo.ActionsRow {
-	backends := []string{"TranslateAPI", "MyMemory", "Cerebras", "Mistral", "ArliAI"}
+	backends := []string{"TranslateAPI", "MyMemory", "Cerebras", "Mistral"}
 	var options []discordgo.SelectMenuOption
 
 	for _, b := range backends {

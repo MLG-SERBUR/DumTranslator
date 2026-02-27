@@ -77,7 +77,7 @@ func main() {
                 {
                     Type:        discordgo.ApplicationCommandOptionString,
                     Name:        "name",
-                    Description: "Backend name (TranslateAPI, MyMemory, Cerebras, Mistral, ArliAI)",
+                    Description: "Backend name (TranslateAPI, MyMemory, Cerebras, Mistral)",
                     Required:    false,
                 },
             },

@@ -233,7 +233,7 @@ func (c *Cerebras) DisplayName() string {
 func (c *Cerebras) Translate(text string, source string) (*TranslateResponse, error) {
 	log.Printf("Translating text with Cerebras (%s): %s", c.Model, text)
 
-	prompt := fmt.Sprintf("only translate this text to english, nothing else: %s", text)
+	prompt := fmt.Sprintf("only translate this text to english; do not output anything else: %s", text)
 	reqBody := ChatRequest{
 		Model: c.Model,
 		Messages: []ChatMessage{
@@ -308,7 +308,7 @@ func (m *Mistral) DisplayName() string {
 func (m *Mistral) Translate(text string, source string) (*TranslateResponse, error) {
 	log.Printf("Translating text with Mistral (%s): %s", m.Model, text)
 
-	prompt := fmt.Sprintf("only translate this text to english, nothing else: %s", text)
+	prompt := fmt.Sprintf("only translate this text to english; do not output anything else: %s", text)
 	reqBody := ChatRequest{
 		Model: m.Model,
 		Messages: []ChatMessage{
@@ -382,7 +382,7 @@ func (a *ArliAI) DisplayName() string {
 func (a *ArliAI) Translate(text string, source string) (*TranslateResponse, error) {
 	log.Printf("Translating text with ArliAI (%s): %s", a.Model, text)
 
-	prompt := fmt.Sprintf("only translate this text to english, nothing else: %s", text)
+	prompt := fmt.Sprintf("only translate this text to english; do not output anything else: %s", text)
 	reqBody := ChatRequest{
 		Model: a.Model,
 		Messages: []ChatMessage{
