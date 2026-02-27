@@ -192,54 +192,40 @@ func (h *Handler) handleCommandInteraction(s *discordgo.Session, i *discordgo.In
 		options := data.Options[0]
 		switch options.Name {
 		case "on":
-			// 1. Robust lookup for Voice State
-			var vs *discordgo.VoiceState
-			var err error
-
-			// Try the direct cache lookup first
-			vs, err = s.State.VoiceState(i.GuildID, i.Member.User.ID)
-
-			// FALLBACK: If direct lookup fails (common after restart),
-			// manually search the guild's voice states
-			if err != nil || vs == nil {
-				g, stateErr := s.State.Guild(i.GuildID)
-				if stateErr == nil {
-					for _, state := range g.VoiceStates {
-						if state.UserID == i.Member.User.ID {
-							vs = state
-							err = nil // Found them!
-							break
-						}
-					}
-				}
+			// 1. Fetch the channel where the command was typed
+			// Try cache first, fallback to REST API if the bot just restarted
+			channel, err := s.State.Channel(i.ChannelID)
+			if err != nil {
+				channel, err = s.Channel(i.ChannelID)
 			}
 
-			if err != nil || vs == nil || vs.ChannelID == "" {
+			if err != nil {
 				s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 					Type: discordgo.InteractionResponseChannelMessageWithSource,
 					Data: &discordgo.InteractionResponseData{
-						Content: "I couldn't find you in a voice channel. If I just restarted, please wait 5 seconds or try rejoining the channel.",
+						Content: "Error verifying channel: " + err.Error(),
 						Flags:   discordgo.MessageFlagsEphemeral,
 					},
 				})
 				return
 			}
 
-			// Verify if it's the correct channel (if user typed in the voice channel chat)
-			// The instructions said "if the user is in the channel and typing the commands in the corresponding voice channel"
-			// Discord provides ChannelID in the interaction, which for VC chat is the VC ID.
-			if i.ChannelID != vs.ChannelID {
+			// 2. Verify that the command was typed inside a Voice Channel's text chat.
+			// By checking this, we completely bypass the buggy VoiceState cache!
+			if channel.Type != discordgo.ChannelTypeGuildVoice && channel.Type != discordgo.ChannelTypeGuildStageVoice {
 				s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 					Type: discordgo.InteractionResponseChannelMessageWithSource,
 					Data: &discordgo.InteractionResponseData{
-						Content: "Please use this command in the voice channel's text chat.",
+						Content: "Please use this command directly inside the voice channel's text chat.",
 						Flags:   discordgo.MessageFlagsEphemeral,
 					},
 				})
 				return
 			}
 
-			err = h.Captions.Start(i.GuildID, vs.ChannelID, i.ChannelID)
+			// 3. Since we know they typed it in a VC, i.ChannelID IS the voice channel!
+			// We pass i.ChannelID as both the Voice Channel ID and the Text Output ID.
+			err = h.Captions.Start(i.GuildID, i.ChannelID, i.ChannelID)
 			if err != nil {
 				s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 					Type: discordgo.InteractionResponseChannelMessageWithSource,
