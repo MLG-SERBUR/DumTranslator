@@ -410,26 +410,21 @@ func (b *AudioBuffer) ShouldProcess() (bool, bool) {
 	return false, false
 }
 
-func (b *AudioBuffer) Pop(isHardCutoff bool) []*discordgo.Packet {
+func (b *AudioBuffer) Pop(isHardCutoff bool)[]*discordgo.Packet {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
 	p := b.Packets
 
 	// Discord sends Opus packets @ 20ms
-	// 1000 packets * 20ms = 20,000ms (20 seconds)
-	// We want a massive overlap to maintain context.
-	overlapSize := 1000
+	// 100 packets * 20ms = 2,000ms (2 seconds)
+	// 2 seconds is the standard overlap to prevent cut-off words
+	overlapSize := 100
 
 	if isHardCutoff && len(p) > overlapSize {
-		// Retain the last 20 seconds of packets for the NEXT chunk.
-		// We copy to a new slice to avoid memory leaks from the old underlying array.
 		b.Packets = append([]*discordgo.Packet(nil), p[len(p)-overlapSize:]...)
-
-		// IMPORTANT: We must reset FirstPush to 20 seconds ago.
-		// This ensures the ShouldProcess logic knows we already have
-		// 20s of audio in the buffer for the next cycle.
-		b.FirstPush = time.Now().Add(-20 * time.Second)
+		// Reset FirstPush to 2 seconds ago
+		b.FirstPush = time.Now().Add(-2 * time.Second)
 	} else {
 		// Standard behavior: clear the buffer completely on natural silence.
 		b.Packets = nil
