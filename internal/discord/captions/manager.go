@@ -29,6 +29,7 @@ type VoiceSession struct {
 	EmbedMsgID string
 	TextMsgID  string // The channel where the commands are typed
 	SSRCtoUser map[uint32]string
+	LastUserText map[uint32]string // Tracks the previous text per-user for the Whisper prompt
 	Done       chan bool
 	mu         sync.Mutex
 }
@@ -54,6 +55,7 @@ func (m *Manager) Start(guildID, channelID string, tcID string) error {
 		ChannelID:  channelID,
 		UserLogs:   []string{},
 		SSRCtoUser: make(map[uint32]string),
+		LastUserText: make(map[uint32]string), // Initialize the new map
 		Done:       make(chan bool),
 		TextMsgID:  tcID,
 	}
@@ -248,6 +250,7 @@ func (m *Manager) processChunk(vs *VoiceSession, ssrc uint32, packets []*discord
 
 	vs.mu.Lock()
 	userID := vs.SSRCtoUser[ssrc]
+	lastText := vs.LastUserText[ssrc] // Fetch the previous text for this specific user
 	vs.mu.Unlock()
 
 	// Default fallback
@@ -308,8 +311,19 @@ func (m *Manager) processChunk(vs *VoiceSession, ssrc uint32, packets []*discord
 
 	oggData := buf.Bytes()
 
-	// 2. Send to Groq - using .ogg extension
-	text, debugStr, err := m.Groq.TranslateAudio(oggData, "audio.ogg")
+	// 2. Build the prompt using the user's previous transcription
+	// We provide a base context, and append their last spoken text.
+	var prompt string
+	if lastText != "" {
+		// Whisper has a 224 token limit for prompts. We safely trim to the last ~400 chars.
+		if len(lastText) > 400 {
+			lastText = lastText[len(lastText)-400:]
+		}
+		prompt = lastText
+	}
+
+	// 3. Send to Groq with the new prompt parameter
+	text, debugStr, err := m.Groq.TranslateAudio(oggData, "audio.ogg", prompt)
 	if err != nil {
 		log.Printf("Groq error: %v", err)
 		return
@@ -317,10 +331,15 @@ func (m *Manager) processChunk(vs *VoiceSession, ssrc uint32, packets []*discord
 
 	text = strings.TrimSpace(text)
 	if text == "" {
-		// It's empty (dropped/hallucination); don't update embed, keep last successful debug
 		return
 	}
 
+	// 4. Save this successful text as the prompt for the user's NEXT audio chunk
+	vs.mu.Lock()
+	vs.LastUserText[ssrc] = text
+	vs.mu.Unlock()
+
+	// Send to Discord channel
 	m.addCaption(vs, username, text, debugStr)
 }
 

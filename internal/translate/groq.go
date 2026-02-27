@@ -46,7 +46,7 @@ type GroqSegment struct {
 	NoSpeechProb     float64 `json:"no_speech_prob"`
 }
 
-func (c *GroqClient) TranslateAudio(audioData []byte, filename string) (string, string, error) {
+func (c *GroqClient) TranslateAudio(audioData[]byte, filename string, prompt string) (string, string, error) {
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 
@@ -69,8 +69,10 @@ func (c *GroqClient) TranslateAudio(audioData []byte, filename string) (string, 
 	// 3. Set Temperature to 0 for deterministic outputs
 	_ = writer.WriteField("temperature", "0")
 
-	// _ = writer.WriteField("prompt", "This is a transcript of an ongoing casual Discord voice conversation.")
-
+	// 4. Add the prompt if one is provided
+	if prompt != "" {
+		_ = writer.WriteField("prompt", prompt)
+	}
 	err = writer.Close()
 	if err != nil {
 		return "", "", err
