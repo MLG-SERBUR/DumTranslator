@@ -528,5 +528,62 @@ func (g *GoogleTranslate) Translate(text string, source string) (*TranslateRespo
 	}, nil
 }
 
+type GoogleTranslate2 struct {
+	HTTP *http.Client
+}
+
+func NewGoogleTranslate2() *GoogleTranslate2 {
+	return &GoogleTranslate2{
+		HTTP: &http.Client{Timeout: 10 * time.Second},
+	}
+}
+
+func (g *GoogleTranslate2) DisplayName() string {
+	return "Google Translate 2"
+}
+
+type Google2Response struct {
+	SourceLanguage string `json:"sourceLanguage"`
+	Translation    string `json:"translation"`
+}
+
+func (g *GoogleTranslate2) Translate(text string, source string) (*TranslateResponse, error) {
+	log.Printf("Translating text with Google Translate 2: %s", text)
+	if source == "" || source == "unknown" {
+		source = "auto"
+	}
+
+	params := url.Values{}
+	params.Set("params.client", "gtx")
+	params.Set("dataTypes", "TRANSLATION")
+	params.Set("key", "AIzaSyDLEeFI5OtFBwYBIoK_jj5m32rZK5CkCXA")
+	params.Set("query.sourceLanguage", source)
+	params.Set("query.targetLanguage", "en")
+	params.Set("query.text", text)
+
+	requestURL := "https://translate-pa.googleapis.com/v1/translate?" + params.Encode()
+	resp, err := g.HTTP.Get(requestURL)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("google translate 2 returned status: %d, body: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var g2Resp Google2Response
+	if err := json.NewDecoder(resp.Body).Decode(&g2Resp); err != nil {
+		return nil, err
+	}
+
+	return &TranslateResponse{
+		TranslatedText: g2Resp.Translation,
+		SourceLanguage: g2Resp.SourceLanguage,
+		TargetLanguage: "en",
+	}, nil
+}
+
 
 

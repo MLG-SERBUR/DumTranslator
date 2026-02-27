@@ -139,11 +139,11 @@ func (h *Handler) handleCommandInteraction(s *discordgo.Session, i *discordgo.In
 		}
 
 		newBackend := options[0].StringValue()
-		if newBackend == "Google" {
+		if newBackend == "Google" || newBackend == "Google2" {
 			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{
-					Content: "Google Translate is a one-off backend and cannot be set as default.",
+					Content: fmt.Sprintf("%s is a one-off backend and cannot be set as default.", newBackend),
 				},
 			})
 			return
@@ -215,7 +215,7 @@ func (h *Handler) handleComponentInteraction(s *discordgo.Session, i *discordgo.
 	nextBackend := i.MessageComponentData().Values[0]
 
 	// Update the default backend for everyone (unless it's a one-off backend)
-	isOneOff := (nextBackend == "Google")
+	isOneOff := (nextBackend == "Google" || nextBackend == "Google2")
 	if !isOneOff {
 		h.mu.Lock()
 		h.ActiveBackend = nextBackend
@@ -334,12 +334,14 @@ func (h *Handler) createBackendSelectMenu(messageID string, activeBackend string
 	}
 
 	// Add one-off backends
-	if translator, ok := h.Translators["Google"]; ok {
-		options = append(options, discordgo.SelectMenuOption{
-			Label:   translator.DisplayName(),
-			Value:   "Google",
-			Default: activeBackend == "Google",
-		})
+	for _, b := range []string{"Google", "Google2"} {
+		if translator, ok := h.Translators[b]; ok {
+			options = append(options, discordgo.SelectMenuOption{
+				Label:   translator.DisplayName(),
+				Value:   b,
+				Default: activeBackend == b,
+			})
+		}
 	}
 
 	return discordgo.ActionsRow{
