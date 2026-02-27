@@ -109,8 +109,7 @@ func (c *GroqClient) TranslateAudio(audioData []byte, filename string) (string, 
 
 		// Rule A: If Whisper is > 60% sure there is no actual speech here, drop it.
 		// This mathematically catches silence/breathing turning into "Thank you."
-		//log.Printf("Processing segment: '%s' (no_speech_prob=%.2f, compression_ratio=%.2f)", seg.Text, seg.NoSpeechProb, seg.CompressionRatio)
-		if seg.NoSpeechProb > 0.6 {
+		if seg.NoSpeechProb > 0.2 {
 			log.Printf("high no_speech_prob: '%s' (no_speech_prob=%.2f)", seg.Text, seg.NoSpeechProb)
 			continue
 		}
@@ -128,6 +127,8 @@ func (c *GroqClient) TranslateAudio(audioData []byte, filename string) (string, 
 			log.Printf("Blacklisted text: %q", seg.Text)
 			continue
 		}
+
+		log.Printf("'%s' (no_speech_prob=%.2f, compression_ratio=%.2f)", seg.Text, seg.NoSpeechProb, seg.CompressionRatio)
 
 		validTextChunks = append(validTextChunks, cleanedText)
 	}
