@@ -49,25 +49,58 @@ func (m *Manager) Start(guildID, channelID string, tcID string) error {
 		return fmt.Errorf("captions already running in this guild")
 	}
 
-	vc, err := m.Session.ChannelVoiceJoin(guildID, channelID, false, false)
-	if err != nil {
-		return err
-	}
-
 	vs := &VoiceSession{
 		GuildID:    guildID,
 		ChannelID:  channelID,
-		VC:         vc,
 		UserLogs:   []string{},
 		SSRCtoUser: make(map[uint32]string),
 		Done:       make(chan bool),
 		TextMsgID:  tcID,
 	}
 
+	// 1. Pre-create the VoiceConnection and attach the handler BEFORE connecting.
+	// This prevents the race condition where we miss the initial SSRC mapping
+	// payloads sent by Discord during the connection handshake.
+	m.Session.RLock()
+	vc, ok := m.Session.VoiceConnections[guildID]
+	m.Session.RUnlock()
+
+	if !ok || vc == nil {
+		vc = &discordgo.VoiceConnection{}
+		m.Session.Lock()
+		if m.Session.VoiceConnections == nil {
+			m.Session.VoiceConnections = make(map[string]*discordgo.VoiceConnection)
+		}
+		m.Session.VoiceConnections[guildID] = vc
+		m.Session.Unlock()
+	}
+	vs.VC = vc
+
+	// Register the handler early
+	vc.AddHandler(func(vc *discordgo.VoiceConnection, vsUpdate *discordgo.VoiceSpeakingUpdate) {
+		// Discord sometimes omits the UserID in subsequent speaking updates to save bandwidth.
+		// We only want to update our map if the UserID is actually provided!
+		if vsUpdate.UserID != "" {
+			vs.mu.Lock()
+			vs.SSRCtoUser[uint32(vsUpdate.SSRC)] = vsUpdate.UserID
+			vs.mu.Unlock()
+		}
+	})
+
+	// 2. Now join the channel. It will inherit the pre-created VoiceConnection.
+	// Because the handler is already there, it will catch the first initial events!
+	vc, err := m.Session.ChannelVoiceJoin(guildID, channelID, false, false)
+	if err != nil {
+		// Cleanup the pre-allocated vc on failure
+		m.Session.Lock()
+		delete(m.Session.VoiceConnections, guildID)
+		m.Session.Unlock()
+		return err
+	}
+	vs.VC = vc // Ensure we assign the connected interface
+
 	// Disable internal retries if possible, or handle disconnection
 	vc.LogLevel = discordgo.LogDebug
-	// Note: discordgo's internal loops will still try to reconnect if not closed.
-	// We'll watch for OpisRecv closure as a sign of permanent failure or Stop call.
 
 	m.Sessions[guildID] = vs
 
@@ -90,7 +123,6 @@ func (m *Manager) Start(guildID, channelID string, tcID string) error {
 				}
 			case <-ticker.C:
 				if !vs.VC.Ready {
-					// Connection dropped, enforced STOP (no reconnect).
 					log.Printf("Voice connection not ready, enforced STOP (no reconnect).")
 					m.Stop(guildID)
 					return
@@ -157,12 +189,8 @@ func (m *Manager) listenLoop(vs *VoiceSession) {
 	// Map to track per-user audio buffers
 	userAudio := make(map[uint32]*AudioBuffer)
 
-	// Handler for SSRC mapping
-	vs.VC.AddHandler(func(vc *discordgo.VoiceConnection, vsUpdate *discordgo.VoiceSpeakingUpdate) {
-		vs.mu.Lock()
-		vs.SSRCtoUser[uint32(vsUpdate.SSRC)] = vsUpdate.UserID
-		vs.mu.Unlock()
-	})
+	// NOTE: vs.VC.AddHandler(...) has been successfully removed from here
+	// to prevent race conditions. It is handled in Start() instead.
 
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()

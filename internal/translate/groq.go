@@ -54,10 +54,7 @@ func (c *GroqClient) TranslateAudio(audioData []byte, filename string) (string, 
 	_ = writer.WriteField("temperature", "0")
 
 	// 4. Add a Prompt
-	// This "primes" the model. "Thank you for watching" usually appears because
-	// Whisper thinks it's transcribing a video outro.
-	// Priming it with conversational text forces it into "chat mode".
-	_ = writer.WriteField("prompt", "Hello, this is a live conversation.")
+	_ = writer.WriteField("prompt", "Transcribe only the spoken content. Do not add thanks, thank you, or any polite closings.")
 
 	err = writer.Close()
 	if err != nil {
