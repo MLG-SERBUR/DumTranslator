@@ -128,7 +128,7 @@ func (m *Manager) Stop(guildID string) error {
 		return fmt.Errorf("no captions running in this guild")
 	}
 
-	// Double check done signal to avoid race
+	// 1. Check if already closed
 	select {
 	case <-vs.Done:
 		m.mu.Unlock()
@@ -136,8 +136,17 @@ func (m *Manager) Stop(guildID string) error {
 	default:
 	}
 
+	// 2. Signal goroutines to stop
 	close(vs.Done)
-	vs.VC.Close() // Use Close() to ensure it stops immediately
+
+	// 3. PHYSICALLY LEAVE the channel
+	// We call Disconnect() which sends the Opcode 4 (Gateway Voice State Update)
+	// to Discord telling them we are leaving.
+	if vs.VC != nil {
+		vs.VC.Disconnect()
+	}
+
+	// 4. Cleanup map
 	delete(m.Sessions, guildID)
 	m.mu.Unlock()
 
@@ -365,9 +374,9 @@ func (b *AudioBuffer) Pop(isHardCutoff bool) []*discordgo.Packet {
 		// Retain the last 20 seconds of packets for the NEXT chunk.
 		// We copy to a new slice to avoid memory leaks from the old underlying array.
 		b.Packets = append([]*discordgo.Packet(nil), p[len(p)-overlapSize:]...)
-		
+
 		// IMPORTANT: We must reset FirstPush to 20 seconds ago.
-		// This ensures the ShouldProcess logic knows we already have 
+		// This ensures the ShouldProcess logic knows we already have
 		// 20s of audio in the buffer for the next cycle.
 		b.FirstPush = time.Now().Add(-20 * time.Second)
 	} else {
