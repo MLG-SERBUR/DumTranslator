@@ -172,6 +172,8 @@ func (m *Manager) Stop(guildID string) error {
 	close(vs.Done)
 
 	// 3. PHYSICALLY LEAVE the channel
+	// We call Disconnect() which sends the Opcode 4 (Gateway Voice State Update)
+	// to Discord telling them we are leaving.
 	if vs.VC != nil {
 		// Prevent discordgo's internal reconnect() loop from re-joining.
 		// When the sleeping loop wakes up and tries to join "", 

@@ -9,7 +9,7 @@
     "arliai_model": "Gemma-3-27B-it",
     "groq_api_key": "YOUR_GROQ_API_KEY",
     "captions_enabled": true,
-    "stt_model": "whisper-large-v3-turbo",
+    "stt_model": "whisper-large-v3",
     "mymemory_email": "YOUR_EMAIL@example.com",
     "backend": "TranslateAPI",
     "target_channels": []
