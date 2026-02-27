@@ -330,6 +330,7 @@ func (h *Handler) createBackendSelectMenu(messageID string, activeBackend string
 		options = append(options, discordgo.SelectMenuOption{
 			Label:   translator.DisplayName(),
 			Value:   b,
+			Default: activeBackend == b,
 		})
 	}
 
