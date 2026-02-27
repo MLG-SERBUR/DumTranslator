@@ -147,10 +147,19 @@ func filterHallucinations(text string) string {
 
 	// A list of standard Youtube/Podcast training-data hallucinations
 	hallucinations := map[string]bool{
-		"thank you": true,
-		"thanks":    true,
-		"bye":       true,
-		"goodbye":   true,
+		"thank you":                    true,
+		"thanks":                       true,
+		"bye":                          true,
+		"goodbye":                      true,
+		"thanks for watching":          true,
+		"thank you for watching":       true,
+		"please subscribe":             true,
+		"subscribe":                    true,
+		"subscribe to the channel":     true,
+		"thank you very much":          true,
+		"thanks guys":                  true,
+		"i'll see you in the next one": true,
+		"if you'd like to subscribe":   true,
 	}
 
 	if hallucinations[lower] {
