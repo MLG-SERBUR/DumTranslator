@@ -6,7 +6,6 @@ import (
 	"strings"
 	"sync"
 
-
 	"github.com/bwmarrin/discordgo"
 	"github.com/user/dumtranslator/internal/config"
 	"github.com/user/dumtranslator/internal/discord/captions"
@@ -18,11 +17,11 @@ type Handler struct {
 	BackendOrder  []string
 	ActiveBackend string
 	Channels      *config.ChannelStore
-	WebhookCache   map[string]string // map[channelID]webhookID
-	Config         *config.Config
-	ConfigPath     string
-	Captions       *captions.Manager
-	mu             sync.Mutex 
+	WebhookCache  map[string]string // map[channelID]webhookID
+	Config        *config.Config
+	ConfigPath    string
+	Captions      *captions.Manager
+	mu            sync.Mutex
 }
 
 func NewHandler(translators map[string]translate.Translator, order []string, cfg *config.Config, configPath string, cs *config.ChannelStore) *Handler {
@@ -35,17 +34,16 @@ func NewHandler(translators map[string]translate.Translator, order []string, cfg
 		BackendOrder:  order,
 		ActiveBackend: initialBackend,
 		Channels:      cs,
-		WebhookCache:   make(map[string]string),
-		Config:         cfg,
-		ConfigPath:     configPath,
-		Captions:       nil, // Will be set in main
+		WebhookCache:  make(map[string]string),
+		Config:        cfg,
+		ConfigPath:    configPath,
+		Captions:      nil, // Will be set in main
 	}
 }
 
 func (h *Handler) activeTranslator() translate.Translator {
 	return h.getTranslator(h.ActiveBackend)
 }
-
 
 func (h *Handler) MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
 	// Ignore all messages created by the bot itself
@@ -78,7 +76,6 @@ func (h *Handler) MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate
 		log.Printf("Translation error: %v", err)
 		return
 	}
-
 
 	// Double check with API response
 	if resp.SourceLanguage != "ar" && resp.SourceLanguage != "ko" {
@@ -195,13 +192,33 @@ func (h *Handler) handleCommandInteraction(s *discordgo.Session, i *discordgo.In
 		options := data.Options[0]
 		switch options.Name {
 		case "on":
-			// Check if user is in a voice channel
-			vs, err := s.State.VoiceState(i.GuildID, i.Member.User.ID)
-			if err != nil || vs.ChannelID == "" {
+			// 1. Robust lookup for Voice State
+			var vs *discordgo.VoiceState
+			var err error
+
+			// Try the direct cache lookup first
+			vs, err = s.State.VoiceState(i.GuildID, i.Member.User.ID)
+
+			// FALLBACK: If direct lookup fails (common after restart),
+			// manually search the guild's voice states
+			if err != nil || vs == nil {
+				g, stateErr := s.State.Guild(i.GuildID)
+				if stateErr == nil {
+					for _, state := range g.VoiceStates {
+						if state.UserID == i.Member.User.ID {
+							vs = state
+							err = nil // Found them!
+							break
+						}
+					}
+				}
+			}
+
+			if err != nil || vs == nil || vs.ChannelID == "" {
 				s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 					Type: discordgo.InteractionResponseChannelMessageWithSource,
 					Data: &discordgo.InteractionResponseData{
-						Content: "You must be in a voice channel to use this command.",
+						Content: "I couldn't find you in a voice channel. If I just restarted, please wait 5 seconds or try rejoining the channel.",
 						Flags:   discordgo.MessageFlagsEphemeral,
 					},
 				})
@@ -239,7 +256,7 @@ func (h *Handler) handleCommandInteraction(s *discordgo.Session, i *discordgo.In
 					Content: "Captions enabled. I've joined the voice channel.",
 				},
 			})
-
+			log.Printf("Started captions for guild %s in channel %s", i.GuildID, vs.ChannelID)
 		case "off":
 			err := h.Captions.Stop(i.GuildID)
 			response := "Captions disabled. I've left the voice channel."

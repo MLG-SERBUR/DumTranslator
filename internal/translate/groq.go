@@ -35,6 +35,7 @@ func (c *GroqClient) TranslateAudio(audioData []byte, filename string) (string, 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 
+	// 1. Add the audio file
 	part, err := writer.CreateFormFile("file", filename)
 	if err != nil {
 		return "", err
@@ -44,8 +45,19 @@ func (c *GroqClient) TranslateAudio(audioData []byte, filename string) (string, 
 		return "", err
 	}
 
+	// 2. Add standard fields
 	_ = writer.WriteField("model", c.Model)
 	_ = writer.WriteField("response_format", "json")
+
+	// 3. Set Temperature to 0
+	// This makes the output deterministic and reduces hallucinations during silence.
+	_ = writer.WriteField("temperature", "0")
+
+	// 4. Add a Prompt
+	// This "primes" the model. "Thank you for watching" usually appears because
+	// Whisper thinks it's transcribing a video outro.
+	// Priming it with conversational text forces it into "chat mode".
+	_ = writer.WriteField("prompt", "Hello, this is a live conversation.")
 
 	err = writer.Close()
 	if err != nil {

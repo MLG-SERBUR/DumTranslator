@@ -65,7 +65,7 @@ func (m *Manager) Start(guildID, channelID string, tcID string) error {
 	}
 
 	// Disable internal retries if possible, or handle disconnection
-	vc.LogLevel = discordgo.LogDebug 
+	vc.LogLevel = discordgo.LogDebug
 	// Note: discordgo's internal loops will still try to reconnect if not closed.
 	// We'll watch for OpisRecv closure as a sign of permanent failure or Stop call.
 
@@ -167,18 +167,22 @@ func (m *Manager) listenLoop(vs *VoiceSession) {
 			if !ok {
 				return
 			}
-			
+
 			buf, ok := userAudio[p.SSRC]
 			if !ok {
-				buf = NewAudioBuffer(p.SSRC)
+				buf = NewAudioBuffer(p.SSRC) // Create new buffer for new user
 				userAudio[p.SSRC] = buf
 			}
-			buf.Push(p)
+			buf.Push(p) // Add packet to THAT user's buffer
 
 		case <-ticker.C:
 			for ssrc, buf := range userAudio {
-				if buf.ShouldProcess() {
-					go m.processChunk(vs, ssrc, buf.Pop())
+				// Receive both the process flag and the hard cutoff flag
+				shouldProcess, isHardCutoff := buf.ShouldProcess()
+
+				if shouldProcess {
+					// Pass the hard cutoff flag into Pop
+					go m.processChunk(vs, ssrc, buf.Pop(isHardCutoff))
 				}
 			}
 		}
@@ -194,17 +198,37 @@ func (m *Manager) processChunk(vs *VoiceSession, ssrc uint32, packets []*discord
 	userID := vs.SSRCtoUser[ssrc]
 	vs.mu.Unlock()
 
+	// Default fallback
 	username := fmt.Sprintf("User %d", ssrc)
+
 	if userID != "" {
-		user, _ := m.Session.User(userID)
-		if user != nil {
-			username = user.Username
+		// 1. Try to get the user from the state (cache) to find their Server Nickname
+		member, err := m.Session.State.Member(vs.GuildID, userID)
+		if err == nil && member.Nick != "" {
+			username = member.Nick
+		} else if err == nil && member.User != nil {
+			// 2. If no nickname, try Global Display Name or Username
+			if member.User.GlobalName != "" {
+				username = member.User.GlobalName
+			} else {
+				username = member.User.Username
+			}
+		} else {
+			// 3. Fallback: If not in state, try a quick API fetch
+			user, err := m.Session.User(userID)
+			if err == nil {
+				if user.GlobalName != "" {
+					username = user.GlobalName
+				} else {
+					username = user.Username
+				}
+			}
 		}
 	}
 
 	// 1. Write the raw Opus packets directly into an Ogg container in-memory
 	var buf bytes.Buffer
-	
+
 	// Discord sends 48kHz, 2-channel audio
 	ogg, err := oggwriter.NewWith(&buf, 48000, 2)
 	if err != nil {
@@ -226,9 +250,9 @@ func (m *Manager) processChunk(vs *VoiceSession, ssrc uint32, packets []*discord
 			log.Printf("Failed to write RTP packet: %v", err)
 		}
 	}
-	
+
 	// Close is REQUIRED to write the End of Stream (EOS) flags for Ogg!
-	ogg.Close() 
+	ogg.Close()
 
 	oggData := buf.Bytes()
 
@@ -253,18 +277,18 @@ func (m *Manager) addCaption(vs *VoiceSession, username, text string) {
 
 	line := fmt.Sprintf("**%s**: %s", username, text)
 	vs.UserLogs = append(vs.UserLogs, line)
-	if len(vs.UserLogs) > 20 {
-		vs.UserLogs = vs.UserLogs[len(vs.UserLogs)-20:]
+	if len(vs.UserLogs) > 10 {
+		vs.UserLogs = vs.UserLogs[len(vs.UserLogs)-10:]
 	}
 
 	content := strings.Join(vs.UserLogs, "\n")
-	
+
 	embed := &discordgo.MessageEmbed{
 		Title:       "Translated Captions",
 		Description: content,
 		Color:       0x00ff00,
 		Footer: &discordgo.MessageEmbedFooter{
-			Text: "Powered by Groq STT",
+			Text: "Powered by Groq (Large-Whisper-v3)",
 		},
 	}
 
@@ -276,11 +300,11 @@ func (m *Manager) addCaption(vs *VoiceSession, username, text string) {
 
 // AudioBuffer helpers
 type AudioBuffer struct {
-	SSRC       uint32
-	Packets    []*discordgo.Packet
-	LastPush   time.Time
-	FirstPush  time.Time
-	mu         sync.Mutex
+	SSRC      uint32
+	Packets   []*discordgo.Packet
+	LastPush  time.Time
+	FirstPush time.Time
+	mu        sync.Mutex
 }
 
 func NewAudioBuffer(ssrc uint32) *AudioBuffer {
@@ -297,31 +321,60 @@ func (b *AudioBuffer) Push(p *discordgo.Packet) {
 	b.mu.Unlock()
 }
 
-func (b *AudioBuffer) ShouldProcess() bool {
+// ShouldProcess returns (shouldProcess bool, isHardCutoff bool)
+func (b *AudioBuffer) ShouldProcess() (bool, bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+
 	if len(b.Packets) == 0 {
-		return false
+		return false, false
 	}
+
 	duration := time.Since(b.FirstPush)
 	silence := time.Since(b.LastPush)
-	
-	// Min 10s audio + 800ms silence OR max 25s
-	if duration > 10*time.Second && silence > 800*time.Millisecond {
-		return true
+
+	// 1. Hard Cutoff: 30 seconds
+	// If the buffer grows larger than 30s, force a process event.
+	// Returns isHardCutoff = true to trigger the overlap retention.
+	if duration > 30*time.Second {
+		return true, true
 	}
-	if duration > 25*time.Second {
-		return true
+
+	// 2. Natural Silence: 800ms
+	// Since there is no minimum time, this triggers on any phrase
+	// as soon as the user pauses for 800ms.
+	if silence > 800*time.Millisecond {
+		return true, false
 	}
-	return false
+
+	return false, false
 }
 
-func (b *AudioBuffer) Pop() []*discordgo.Packet {
+func (b *AudioBuffer) Pop(isHardCutoff bool) []*discordgo.Packet {
 	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	p := b.Packets
-	b.Packets = nil
-	b.FirstPush = time.Time{}
-	b.mu.Unlock()
+
+	// Discord sends Opus packets @ 20ms
+	// 1000 packets * 20ms = 20,000ms (20 seconds)
+	// We want a massive overlap to maintain context.
+	overlapSize := 1000
+
+	if isHardCutoff && len(p) > overlapSize {
+		// Retain the last 20 seconds of packets for the NEXT chunk.
+		// We copy to a new slice to avoid memory leaks from the old underlying array.
+		b.Packets = append([]*discordgo.Packet(nil), p[len(p)-overlapSize:]...)
+		
+		// IMPORTANT: We must reset FirstPush to 20 seconds ago.
+		// This ensures the ShouldProcess logic knows we already have 
+		// 20s of audio in the buffer for the next cycle.
+		b.FirstPush = time.Now().Add(-20 * time.Second)
+	} else {
+		// Standard behavior: clear the buffer completely on natural silence.
+		b.Packets = nil
+		b.FirstPush = time.Time{}
+	}
+
 	return p
 }
-
