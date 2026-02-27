@@ -178,6 +178,14 @@ func (m *Manager) Stop(guildID string) error {
 		vs.VC.Disconnect()
 	}
 
+	// Delete the captions message
+	if vs.TextMsgID != "" && vs.EmbedMsgID != "" {
+		err := m.Session.ChannelMessageDelete(vs.TextMsgID, vs.EmbedMsgID)
+		if err != nil {
+			log.Printf("Warning: failed to delete caption message: %v", err)
+		}
+	}
+
 	// 4. Cleanup map
 	delete(m.Sessions, guildID)
 	m.mu.Unlock()
