@@ -394,9 +394,9 @@ func (b *AudioBuffer) ShouldProcess() (bool, bool) {
 	}
 
 	// 2. Natural Silence: 800ms
-	// Since there is no minimum time, this triggers on any phrase
-	// as soon as the user pauses for 800ms.
-	if silence > 800*time.Millisecond {
+
+	// Added a minimum duration of 2 seconds to prevent processing tiny clips
+	if silence > 800*time.Millisecond && duration >= 2*time.Second {
 		return true, false
 	}
 
