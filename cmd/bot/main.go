@@ -11,6 +11,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/user/dumtranslator/internal/config"
 	"github.com/user/dumtranslator/internal/discord"
+	"github.com/user/dumtranslator/internal/discord/captions"
 	"github.com/user/dumtranslator/internal/translate"
 )
 
@@ -66,6 +67,9 @@ func main() {
 		"Google":       google,
 	}
 
+	// Init Groq STT
+	groq := translate.NewGroqClient(cfg.GroqAPIKey, cfg.STTModel)
+
 	order := []string{"TranslateAPI", "MyMemory", "Cerebras", "Cerebras+", "Mistral", "Mistral+"}
 
 	// Init Discord Handler
@@ -77,12 +81,16 @@ func main() {
 		log.Fatalf("Error creating Discord session: %v", err)
 	}
 
+	// Init Captions Manager
+	captionsMgr := captions.NewManager(dg, groq)
+	handler.Captions = captionsMgr
+
 	// Register Handlers
 	dg.AddHandler(handler.MessageCreate)
     dg.AddHandler(handler.InteractionCreate)
 
     // Identify Intent
-    dg.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentsMessageContent
+    dg.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentsMessageContent | discordgo.IntentsGuildVoiceStates
 
 	// Open Connection
 	err = dg.Open()
@@ -109,6 +117,22 @@ func main() {
                     Name:        "name",
                     Description: "Backend name (TranslateAPI, MyMemory, Cerebras, Cerebras+, Mistral, Mistral+)",
                     Required:    false,
+                },
+            },
+        },
+        {
+            Name:        "captions",
+            Description: "Manage real-time translated captions in voice channels",
+            Options: []*discordgo.ApplicationCommandOption{
+                {
+                    Type:        discordgo.ApplicationCommandOptionSubCommand,
+                    Name:        "on",
+                    Description: "Start captions in your current voice channel",
+                },
+                {
+                    Type:        discordgo.ApplicationCommandOptionSubCommand,
+                    Name:        "off",
+                    Description: "Stop captions and leave the voice channel",
                 },
             },
         },

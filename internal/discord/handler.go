@@ -9,6 +9,7 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/user/dumtranslator/internal/config"
+	"github.com/user/dumtranslator/internal/discord/captions"
 	"github.com/user/dumtranslator/internal/translate"
 )
 
@@ -20,6 +21,7 @@ type Handler struct {
 	WebhookCache   map[string]string // map[channelID]webhookID
 	Config         *config.Config
 	ConfigPath     string
+	Captions       *captions.Manager
 	mu             sync.Mutex 
 }
 
@@ -36,6 +38,7 @@ func NewHandler(translators map[string]translate.Translator, order []string, cfg
 		WebhookCache:   make(map[string]string),
 		Config:         cfg,
 		ConfigPath:     configPath,
+		Captions:       nil, // Will be set in main
 	}
 }
 
@@ -177,6 +180,79 @@ func (h *Handler) handleCommandInteraction(s *discordgo.Session, i *discordgo.In
 				Content: response,
 			},
 		})
+	case "captions":
+		if h.Config.CaptionsEnabled != nil && !*h.Config.CaptionsEnabled {
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: "Captions are currently disabled in the configuration.",
+					Flags:   discordgo.MessageFlagsEphemeral,
+				},
+			})
+			return
+		}
+
+		options := data.Options[0]
+		switch options.Name {
+		case "on":
+			// Check if user is in a voice channel
+			vs, err := s.State.VoiceState(i.GuildID, i.Member.User.ID)
+			if err != nil || vs.ChannelID == "" {
+				s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+					Type: discordgo.InteractionResponseChannelMessageWithSource,
+					Data: &discordgo.InteractionResponseData{
+						Content: "You must be in a voice channel to use this command.",
+						Flags:   discordgo.MessageFlagsEphemeral,
+					},
+				})
+				return
+			}
+
+			// Verify if it's the correct channel (if user typed in the voice channel chat)
+			// The instructions said "if the user is in the channel and typing the commands in the corresponding voice channel"
+			// Discord provides ChannelID in the interaction, which for VC chat is the VC ID.
+			if i.ChannelID != vs.ChannelID {
+				s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+					Type: discordgo.InteractionResponseChannelMessageWithSource,
+					Data: &discordgo.InteractionResponseData{
+						Content: "Please use this command in the voice channel's text chat.",
+						Flags:   discordgo.MessageFlagsEphemeral,
+					},
+				})
+				return
+			}
+
+			err = h.Captions.Start(i.GuildID, vs.ChannelID, i.ChannelID)
+			if err != nil {
+				s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+					Type: discordgo.InteractionResponseChannelMessageWithSource,
+					Data: &discordgo.InteractionResponseData{
+						Content: "Error starting captions: " + err.Error(),
+					},
+				})
+				return
+			}
+
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: "Captions enabled. I've joined the voice channel.",
+				},
+			})
+
+		case "off":
+			err := h.Captions.Stop(i.GuildID)
+			response := "Captions disabled. I've left the voice channel."
+			if err != nil {
+				response = "Error stopping captions: " + err.Error()
+			}
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: response,
+				},
+			})
+		}
 	}
 }
 

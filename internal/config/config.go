@@ -16,6 +16,9 @@ type Config struct {
 	MistralModel    string   `json:"mistral_model"`
 	ArliAIAPIKey    string   `json:"arliai_api_key"`
 	ArliAIModel     string   `json:"arliai_model"`
+	GroqAPIKey      string   `json:"groq_api_key"`
+	CaptionsEnabled *bool    `json:"captions_enabled"` // Pointer to distinguish between missing and false
+	STTModel        string   `json:"stt_model"`        // Default: whisper-large-v3-turbo
 	Backend         string   `json:"backend"`          // "TranslateAPI", "MyMemory", "Cerebras", "Mistral", "ArliAI"
 	TargetChannels  []string `json:"target_channels"` // Initial channels from config
 }
@@ -36,6 +39,16 @@ func LoadConfig(path string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// Defaults
+	if cfg.CaptionsEnabled == nil {
+		enabled := true
+		cfg.CaptionsEnabled = &enabled
+	}
+	if cfg.STTModel == "" {
+		cfg.STTModel = "whisper-large-v3-turbo"
+	}
+
 	return &cfg, nil
 }
 
