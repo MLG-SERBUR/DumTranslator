@@ -38,7 +38,6 @@ func main() {
 	mis := translate.NewMistral(cfg.MistralAPIKey, cfg.MistralModel)
 	// arliai := translate.NewArliAI(cfg.ArliAIAPIKey, cfg.ArliAIModel)
     google := translate.NewGoogleTranslate()
-	google2 := translate.NewGoogleTranslate2()
 
 	// Init Specialized (+) Translators
 	plusPrompt := "Translate the following text to natural, fluent, idiomatic English while preserving the original tone, intent, and cultural nuances; do not output anything else: %s"
@@ -65,7 +64,6 @@ func main() {
 		"Mistral":      mis,
 		"Mistral+":     misPlus,
 		"Google":       google,
-		"Google2":      google2,
 	}
 
 	order := []string{"TranslateAPI", "MyMemory", "Cerebras", "Cerebras+", "Mistral", "Mistral+"}

@@ -139,7 +139,7 @@ func (h *Handler) handleCommandInteraction(s *discordgo.Session, i *discordgo.In
 		}
 
 		newBackend := options[0].StringValue()
-		if newBackend == "Google" || newBackend == "Google2" {
+		if newBackend == "Google" {
 			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{
@@ -215,7 +215,7 @@ func (h *Handler) handleComponentInteraction(s *discordgo.Session, i *discordgo.
 	nextBackend := i.MessageComponentData().Values[0]
 
 	// Update the default backend for everyone (unless it's a one-off backend)
-	isOneOff := (nextBackend == "Google" || nextBackend == "Google2")
+	isOneOff := (nextBackend == "Google")
 	if !isOneOff {
 		h.mu.Lock()
 		h.ActiveBackend = nextBackend
@@ -335,7 +335,7 @@ func (h *Handler) createBackendSelectMenu(messageID string, activeBackend string
 	}
 
 	// Add one-off backends
-	for _, b := range []string{"Google", "Google2"} {
+	for _, b := range []string{"Google"} {
 		if translator, ok := h.Translators[b]; ok {
 			options = append(options, discordgo.SelectMenuOption{
 				Label:   translator.DisplayName(),

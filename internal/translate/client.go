@@ -465,90 +465,13 @@ func (g *GoogleTranslate) DisplayName() string {
 	return "Google Translate"
 }
 
-func (g *GoogleTranslate) Translate(text string, source string) (*TranslateResponse, error) {
-	log.Printf("Translating text with Google Translate: %s", text)
-	if source == "" || source == "unknown" {
-		source = "auto"
-	}
-
-	params := url.Values{}
-	params.Set("client", "gtx")
-	params.Set("sl", source)
-	params.Set("tl", "en")
-	params.Set("dt", "t")
-	params.Set("q", text)
-
-	requestURL := "https://translate.googleapis.com/translate_a/single?" + params.Encode()
-	resp, err := g.HTTP.Get(requestURL)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("google translate returned status: %d", resp.StatusCode)
-	}
-
-	var result []interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
-	}
-
-	if len(result) == 0 {
-		return nil, fmt.Errorf("empty response from google translate")
-	}
-
-	// Google's unofficial API returns a nested array
-	sentences, ok := result[0].([]interface{})
-	if !ok || len(sentences) == 0 {
-		return nil, fmt.Errorf("unexpected response format from google translate")
-	}
-
-	translatedText := ""
-	for _, s := range sentences {
-		sentence, ok := s.([]interface{})
-		if ok && len(sentence) > 0 {
-			if part, ok := sentence[0].(string); ok {
-				translatedText += part
-			}
-		}
-	}
-
-	detectedSource := source
-	if len(result) > 2 {
-		if ds, ok := result[2].(string); ok {
-			detectedSource = ds
-		}
-	}
-
-	return &TranslateResponse{
-		TranslatedText: translatedText,
-		SourceLanguage: detectedSource,
-		TargetLanguage: "en",
-	}, nil
-}
-
-type GoogleTranslate2 struct {
-	HTTP *http.Client
-}
-
-func NewGoogleTranslate2() *GoogleTranslate2 {
-	return &GoogleTranslate2{
-		HTTP: &http.Client{Timeout: 10 * time.Second},
-	}
-}
-
-func (g *GoogleTranslate2) DisplayName() string {
-	return "Google Translate 2"
-}
-
-type Google2Response struct {
+type GoogleResponse struct {
 	SourceLanguage string `json:"sourceLanguage"`
 	Translation    string `json:"translation"`
 }
 
-func (g *GoogleTranslate2) Translate(text string, source string) (*TranslateResponse, error) {
-	log.Printf("Translating text with Google Translate 2: %s", text)
+func (g *GoogleTranslate) Translate(text string, source string) (*TranslateResponse, error) {
+	log.Printf("Translating text with Google Translate: %s", text)
 	if source == "" || source == "unknown" {
 		source = "auto"
 	}
@@ -570,17 +493,17 @@ func (g *GoogleTranslate2) Translate(text string, source string) (*TranslateResp
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("google translate 2 returned status: %d, body: %s", resp.StatusCode, string(bodyBytes))
+		return nil, fmt.Errorf("google translate returned status: %d, body: %s", resp.StatusCode, string(bodyBytes))
 	}
 
-	var g2Resp Google2Response
-	if err := json.NewDecoder(resp.Body).Decode(&g2Resp); err != nil {
+	var gResp GoogleResponse
+	if err := json.NewDecoder(resp.Body).Decode(&gResp); err != nil {
 		return nil, err
 	}
 
 	return &TranslateResponse{
-		TranslatedText: g2Resp.Translation,
-		SourceLanguage: g2Resp.SourceLanguage,
+		TranslatedText: gResp.Translation,
+		SourceLanguage: gResp.SourceLanguage,
 		TargetLanguage: "en",
 	}, nil
 }
