@@ -451,4 +451,82 @@ func (a *ArliAI) Translate(text string, source string) (*TranslateResponse, erro
 	}, nil
 }
 
+type GoogleTranslate struct {
+	HTTP *http.Client
+}
+
+func NewGoogleTranslate() *GoogleTranslate {
+	return &GoogleTranslate{
+		HTTP: &http.Client{Timeout: 10 * time.Second},
+	}
+}
+
+func (g *GoogleTranslate) DisplayName() string {
+	return "Google Translate"
+}
+
+func (g *GoogleTranslate) Translate(text string, source string) (*TranslateResponse, error) {
+	log.Printf("Translating text with Google Translate: %s", text)
+	if source == "" || source == "unknown" {
+		source = "auto"
+	}
+
+	params := url.Values{}
+	params.Set("client", "gtx")
+	params.Set("sl", source)
+	params.Set("tl", "en")
+	params.Set("dt", "t")
+	params.Set("q", text)
+
+	requestURL := "https://translate.googleapis.com/translate_a/single?" + params.Encode()
+	resp, err := g.HTTP.Get(requestURL)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("google translate returned status: %d", resp.StatusCode)
+	}
+
+	var result []interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	if len(result) == 0 {
+		return nil, fmt.Errorf("empty response from google translate")
+	}
+
+	// Google's unofficial API returns a nested array
+	sentences, ok := result[0].([]interface{})
+	if !ok || len(sentences) == 0 {
+		return nil, fmt.Errorf("unexpected response format from google translate")
+	}
+
+	translatedText := ""
+	for _, s := range sentences {
+		sentence, ok := s.([]interface{})
+		if ok && len(sentence) > 0 {
+			if part, ok := sentence[0].(string); ok {
+				translatedText += part
+			}
+		}
+	}
+
+	detectedSource := source
+	if len(result) > 2 {
+		if ds, ok := result[2].(string); ok {
+			detectedSource = ds
+		}
+	}
+
+	return &TranslateResponse{
+		TranslatedText: translatedText,
+		SourceLanguage: detectedSource,
+		TargetLanguage: "en",
+	}, nil
+}
+
+
 

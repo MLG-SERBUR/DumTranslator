@@ -37,6 +37,7 @@ func main() {
 	cer := translate.NewCerebras(cfg.CerebrasAPIKey, cfg.CerebrasModel)
 	mis := translate.NewMistral(cfg.MistralAPIKey, cfg.MistralModel)
 	// arliai := translate.NewArliAI(cfg.ArliAIAPIKey, cfg.ArliAIModel)
+    google := translate.NewGoogleTranslate()
 
 	// Init Specialized (+) Translators
 	plusPrompt := "Translate the following text to natural, fluent, idiomatic English while preserving the original tone, intent, and cultural nuances; do not output anything else: %s"
@@ -62,6 +63,7 @@ func main() {
 		"Cerebras+":    cerPlus,
 		"Mistral":      mis,
 		"Mistral+":     misPlus,
+		"Google":       google,
 	}
 
 	order := []string{"TranslateAPI", "MyMemory", "Cerebras", "Cerebras+", "Mistral", "Mistral+"}
