@@ -32,14 +32,42 @@ func main() {
     }
 
 	// Init Translators
-	translateAPI := translate.NewTranslateAPI(cfg.TranslateAPIKey)
-	myMemory := translate.NewMyMemory(cfg.MyMemoryEmail)
-	cerebrasAPI := translate.NewCerebras(cfg.CerebrasAPIKey, cfg.CerebrasModel)
-	mistralAPI := translate.NewMistral(cfg.MistralAPIKey, cfg.MistralModel)
-	arliaiAPI := translate.NewArliAI(cfg.ArliAIAPIKey, cfg.ArliAIModel)
+	tAPI := translate.NewTranslateAPI(cfg.TranslateAPIKey)
+	mm := translate.NewMyMemory(cfg.MyMemoryEmail)
+	cer := translate.NewCerebras(cfg.CerebrasAPIKey, cfg.CerebrasModel)
+	mis := translate.NewMistral(cfg.MistralAPIKey, cfg.MistralModel)
+	// arliai := translate.NewArliAI(cfg.ArliAIAPIKey, cfg.ArliAIModel)
+
+	// Init Specialized (+) Translators
+	plusPrompt := "Translate the following text to natural, fluent, idiomatic English while preserving the original tone, intent, and cultural nuances; do not output anything else: %s"
+	
+	cerPlus := translate.NewCerebras(cfg.CerebrasAPIKey, cfg.CerebrasModel)
+	cerPlus.Prompt = plusPrompt
+	cerPlus.DisplayNameOverride = fmt.Sprintf("Cerebras (%s) (+)", cfg.CerebrasModel)
+
+	misPlus := translate.NewMistral(cfg.MistralAPIKey, cfg.MistralModel)
+	misPlus.Prompt = plusPrompt
+	misPlus.DisplayNameOverride = fmt.Sprintf("Mistral (%s) (+)", cfg.MistralModel)
+
+	/*
+	arliaiPlus := translate.NewArliAI(cfg.ArliAIAPIKey, cfg.ArliAIModel)
+	arliaiPlus.Prompt = plusPrompt
+	arliaiPlus.DisplayNameOverride = fmt.Sprintf("ArliAI (%s) (+)", cfg.ArliAIModel)
+	*/
+
+	translators := map[string]translate.Translator{
+		"TranslateAPI": tAPI,
+		"MyMemory":     mm,
+		"Cerebras":     cer,
+		"Cerebras+":    cerPlus,
+		"Mistral":      mis,
+		"Mistral+":     misPlus,
+	}
+
+	order := []string{"TranslateAPI", "MyMemory", "Cerebras", "Cerebras+", "Mistral", "Mistral+"}
 
 	// Init Discord Handler
-	handler := discord.NewHandler(translateAPI, myMemory, cerebrasAPI, mistralAPI, arliaiAPI, cfg, *configPath, channelStore)
+	handler := discord.NewHandler(translators, order, cfg, *configPath, channelStore)
 
 	// Init Discord Session
 	dg, err := discordgo.New("Bot " + cfg.DiscordToken)
@@ -77,7 +105,7 @@ func main() {
                 {
                     Type:        discordgo.ApplicationCommandOptionString,
                     Name:        "name",
-                    Description: "Backend name (TranslateAPI, MyMemory, Cerebras, Mistral)",
+                    Description: "Backend name (TranslateAPI, MyMemory, Cerebras, Cerebras+, Mistral, Mistral+)",
                     Required:    false,
                 },
             },

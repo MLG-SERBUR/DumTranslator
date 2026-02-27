@@ -13,11 +13,8 @@ import (
 )
 
 type Handler struct {
-	TranslateAPI  *translate.TranslateAPI
-	MyMemory      *translate.MyMemory
-	Cerebras      *translate.Cerebras
-	Mistral       *translate.Mistral
-	ArliAI        *translate.ArliAI
+	Translators   map[string]translate.Translator
+	BackendOrder  []string
 	ActiveBackend string
 	Channels      *config.ChannelStore
 	WebhookCache   map[string]string // map[channelID]webhookID
@@ -26,17 +23,14 @@ type Handler struct {
 	mu             sync.Mutex 
 }
 
-func NewHandler(tAPI *translate.TranslateAPI, mm *translate.MyMemory, cer *translate.Cerebras, mis *translate.Mistral, arliai *translate.ArliAI, cfg *config.Config, configPath string, cs *config.ChannelStore) *Handler {
+func NewHandler(translators map[string]translate.Translator, order []string, cfg *config.Config, configPath string, cs *config.ChannelStore) *Handler {
 	initialBackend := cfg.Backend
 	if initialBackend == "" {
 		initialBackend = "TranslateAPI"
 	}
 	return &Handler{
-		TranslateAPI:  tAPI,
-		MyMemory:      mm,
-		Cerebras:      cer,
-		Mistral:       mis,
-		ArliAI:        arliai,
+		Translators:   translators,
+		BackendOrder:  order,
 		ActiveBackend: initialBackend,
 		Channels:      cs,
 		WebhookCache:   make(map[string]string),
@@ -46,18 +40,7 @@ func NewHandler(tAPI *translate.TranslateAPI, mm *translate.MyMemory, cer *trans
 }
 
 func (h *Handler) activeTranslator() translate.Translator {
-	switch h.ActiveBackend {
-	case "MyMemory":
-		return h.MyMemory
-	case "Cerebras":
-		return h.Cerebras
-	case "Mistral":
-		return h.Mistral
-	case "ArliAI":
-		return h.ArliAI
-	default:
-		return h.TranslateAPI
-	}
+	return h.getTranslator(h.ActiveBackend)
 }
 
 
@@ -156,11 +139,15 @@ func (h *Handler) handleCommandInteraction(s *discordgo.Session, i *discordgo.In
 		}
 
 		newBackend := options[0].StringValue()
-		if newBackend != "TranslateAPI" && newBackend != "MyMemory" && newBackend != "Cerebras" && newBackend != "Mistral" {
+		if _, ok := h.Translators[newBackend]; !ok {
+			var available []string
+			for _, b := range h.BackendOrder {
+				available = append(available, b)
+			}
 			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{
-					Content: "Invalid backend. Use 'TranslateAPI', 'MyMemory', 'Cerebras', or 'Mistral'.",
+					Content: fmt.Sprintf("Invalid backend. Available backends: %s", strings.Join(available, ", ")),
 				},
 			})
 			return
@@ -266,18 +253,10 @@ func (h *Handler) handleComponentInteraction(s *discordgo.Session, i *discordgo.
 }
 
 func (h *Handler) getTranslator(backend string) translate.Translator {
-	switch backend {
-	case "MyMemory":
-		return h.MyMemory
-	case "Cerebras":
-		return h.Cerebras
-	case "Mistral":
-		return h.Mistral
-	case "ArliAI":
-		return h.ArliAI
-	default:
-		return h.TranslateAPI
+	if t, ok := h.Translators[backend]; ok {
+		return t
 	}
+	return h.Translators["TranslateAPI"]
 }
 
 func (h *Handler) sendWebhook(s *discordgo.Session, m *discordgo.MessageCreate, content string) error {
@@ -332,10 +311,9 @@ func (h *Handler) sendWebhook(s *discordgo.Session, m *discordgo.MessageCreate, 
 }
 
 func (h *Handler) createBackendSelectMenu(messageID string, activeBackend string) discordgo.ActionsRow {
-	backends := []string{"TranslateAPI", "MyMemory", "Cerebras", "Mistral"}
 	var options []discordgo.SelectMenuOption
 
-	for _, b := range backends {
+	for _, b := range h.BackendOrder {
 		translator := h.getTranslator(b)
 		options = append(options, discordgo.SelectMenuOption{
 			Label:   translator.DisplayName(),

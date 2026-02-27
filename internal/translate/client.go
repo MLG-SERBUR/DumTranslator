@@ -210,9 +210,11 @@ type ChatResponse struct {
 }
 
 type Cerebras struct {
-	ApiKey string
-	Model  string
-	HTTP   *http.Client
+	ApiKey              string
+	Model               string
+	Prompt              string
+	DisplayNameOverride string
+	HTTP                *http.Client
 }
 
 func NewCerebras(apiKey string, model string) *Cerebras {
@@ -222,18 +224,22 @@ func NewCerebras(apiKey string, model string) *Cerebras {
 	return &Cerebras{
 		ApiKey: apiKey,
 		Model:  model,
+		Prompt: "Only translate this text to english; do not output anything else: %s",
 		HTTP:   &http.Client{Timeout: 15 * time.Second},
 	}
 }
 
 func (c *Cerebras) DisplayName() string {
+	if c.DisplayNameOverride != "" {
+		return c.DisplayNameOverride
+	}
 	return fmt.Sprintf("Cerebras (%s)", c.Model)
 }
 
 func (c *Cerebras) Translate(text string, source string) (*TranslateResponse, error) {
-	log.Printf("Translating text with Cerebras (%s): %s", c.Model, text)
+	log.Printf("Translating text with %s: %s", c.DisplayName(), text)
 
-	prompt := fmt.Sprintf("only translate this text to english; do not output anything else: %s", text)
+	prompt := fmt.Sprintf(c.Prompt, text)
 	reqBody := ChatRequest{
 		Model: c.Model,
 		Messages: []ChatMessage{
@@ -285,9 +291,11 @@ func (c *Cerebras) Translate(text string, source string) (*TranslateResponse, er
 }
 
 type Mistral struct {
-	ApiKey string
-	Model  string
-	HTTP   *http.Client
+	ApiKey              string
+	Model               string
+	Prompt              string
+	DisplayNameOverride string
+	HTTP                *http.Client
 }
 
 func NewMistral(apiKey string, model string) *Mistral {
@@ -297,18 +305,22 @@ func NewMistral(apiKey string, model string) *Mistral {
 	return &Mistral{
 		ApiKey: apiKey,
 		Model:  model,
+		Prompt: "Only translate this text to english; do not output anything else: %s",
 		HTTP:   &http.Client{Timeout: 15 * time.Second},
 	}
 }
 
 func (m *Mistral) DisplayName() string {
+	if m.DisplayNameOverride != "" {
+		return m.DisplayNameOverride
+	}
 	return fmt.Sprintf("Mistral (%s)", m.Model)
 }
 
 func (m *Mistral) Translate(text string, source string) (*TranslateResponse, error) {
-	log.Printf("Translating text with Mistral (%s): %s", m.Model, text)
+	log.Printf("Translating text with %s: %s", m.DisplayName(), text)
 
-	prompt := fmt.Sprintf("only translate this text to english; do not output anything else: %s", text)
+	prompt := fmt.Sprintf(m.Prompt, text)
 	reqBody := ChatRequest{
 		Model: m.Model,
 		Messages: []ChatMessage{
@@ -358,10 +370,13 @@ func (m *Mistral) Translate(text string, source string) (*TranslateResponse, err
 	}, nil
 }
 
+// ArliAI implementation (DISABLED: Do not re-enable without explicit request)
 type ArliAI struct {
-	ApiKey string
-	Model  string
-	HTTP   *http.Client
+	ApiKey              string
+	Model               string
+	Prompt              string
+	DisplayNameOverride string
+	HTTP                *http.Client
 }
 
 func NewArliAI(apiKey string, model string) *ArliAI {
@@ -371,18 +386,22 @@ func NewArliAI(apiKey string, model string) *ArliAI {
 	return &ArliAI{
 		ApiKey: apiKey,
 		Model:  model,
+		Prompt: "Only translate this text to english; do not output anything else: %s",
 		HTTP:   &http.Client{Timeout: 15 * time.Second},
 	}
 }
 
 func (a *ArliAI) DisplayName() string {
+	if a.DisplayNameOverride != "" {
+		return a.DisplayNameOverride
+	}
 	return fmt.Sprintf("ArliAI (%s)", a.Model)
 }
 
 func (a *ArliAI) Translate(text string, source string) (*TranslateResponse, error) {
-	log.Printf("Translating text with ArliAI (%s): %s", a.Model, text)
+	log.Printf("Translating text with %s: %s", a.DisplayName(), text)
 
-	prompt := fmt.Sprintf("only translate this text to english; do not output anything else: %s", text)
+	prompt := fmt.Sprintf(a.Prompt, text)
 	reqBody := ChatRequest{
 		Model: a.Model,
 		Messages: []ChatMessage{
