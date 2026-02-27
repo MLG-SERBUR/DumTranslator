@@ -2,16 +2,15 @@ package captions
 
 import (
 	"bytes"
-	"encoding/binary"
 	"fmt"
 	"log"
-	"os/exec"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/pion/opus"
+	"github.com/pion/rtp"
+	"github.com/pion/webrtc/v4/pkg/media/oggwriter"
 	"github.com/user/dumtranslator/internal/translate"
 )
 
@@ -174,7 +173,7 @@ func (m *Manager) listenLoop(vs *VoiceSession) {
 				buf = NewAudioBuffer(p.SSRC)
 				userAudio[p.SSRC] = buf
 			}
-			buf.Push(p.Opus)
+			buf.Push(p)
 
 		case <-ticker.C:
 			for ssrc, buf := range userAudio {
@@ -186,8 +185,8 @@ func (m *Manager) listenLoop(vs *VoiceSession) {
 	}
 }
 
-func (m *Manager) processChunk(vs *VoiceSession, ssrc uint32, opusPackets [][]byte) {
-	if len(opusPackets) == 0 {
+func (m *Manager) processChunk(vs *VoiceSession, ssrc uint32, packets []*discordgo.Packet) {
+	if len(packets) == 0 {
 		return
 	}
 
@@ -203,22 +202,38 @@ func (m *Manager) processChunk(vs *VoiceSession, ssrc uint32, opusPackets [][]by
 		}
 	}
 
-	// 1. Decode Opus to Mono PCM
-	pcm, err := DecodeOpusToPCM(opusPackets)
+	// 1. Write the raw Opus packets directly into an Ogg container in-memory
+	var buf bytes.Buffer
+	
+	// Discord sends 48kHz, 2-channel audio
+	ogg, err := oggwriter.NewWith(&buf, 48000, 2)
 	if err != nil {
-		log.Printf("Opus decode error: %v", err)
+		log.Printf("Ogg writer error: %v", err)
 		return
 	}
 
-	// 2. Encode PCM to MP3 using ffmpeg
-	mp3Data, err := EncodePCMToMP3(pcm)
-	if err != nil {
-		log.Printf("MP3 encode error: %v", err)
-		return
+	for _, p := range packets {
+		// Reconstruct standard RTP packet for the oggwriter
+		rtpPacket := &rtp.Packet{
+			Header: rtp.Header{
+				SequenceNumber: p.Sequence,
+				Timestamp:      p.Timestamp,
+				SSRC:           p.SSRC,
+			},
+			Payload: p.Opus, // No decoding required!
+		}
+		if err := ogg.WriteRTP(rtpPacket); err != nil {
+			log.Printf("Failed to write RTP packet: %v", err)
+		}
 	}
+	
+	// Close is REQUIRED to write the End of Stream (EOS) flags for Ogg!
+	ogg.Close() 
 
-	// 3. Send to Groq
-	text, err := m.Groq.TranslateAudio(mp3Data, "audio.mp3")
+	oggData := buf.Bytes()
+
+	// 2. Send to Groq - using .ogg extension
+	text, err := m.Groq.TranslateAudio(oggData, "audio.ogg")
 	if err != nil {
 		log.Printf("Groq error: %v", err)
 		return
@@ -262,7 +277,7 @@ func (m *Manager) addCaption(vs *VoiceSession, username, text string) {
 // AudioBuffer helpers
 type AudioBuffer struct {
 	SSRC       uint32
-	Packets    [][]byte
+	Packets    []*discordgo.Packet
 	LastPush   time.Time
 	FirstPush  time.Time
 	mu         sync.Mutex
@@ -272,7 +287,7 @@ func NewAudioBuffer(ssrc uint32) *AudioBuffer {
 	return &AudioBuffer{SSRC: ssrc}
 }
 
-func (b *AudioBuffer) Push(p []byte) {
+func (b *AudioBuffer) Push(p *discordgo.Packet) {
 	b.mu.Lock()
 	if b.FirstPush.IsZero() {
 		b.FirstPush = time.Now()
@@ -301,7 +316,7 @@ func (b *AudioBuffer) ShouldProcess() bool {
 	return false
 }
 
-func (b *AudioBuffer) Pop() [][]byte {
+func (b *AudioBuffer) Pop() []*discordgo.Packet {
 	b.mu.Lock()
 	p := b.Packets
 	b.Packets = nil
@@ -310,54 +325,3 @@ func (b *AudioBuffer) Pop() [][]byte {
 	return p
 }
 
-// Audio Processing Functions
-
-func DecodeOpusToPCM(packets [][]byte) ([]byte, error) {
-	decoder := captionsOpusDecoder()
-	var allPcm []byte
-
-	for _, p := range packets {
-		pcm := make([]byte, 1920*2*2) // Max 60ms at 48k, 2 bytes/sample, 2 channels
-		n, isStereo, err := decoder.Decode(p, pcm)
-		if err != nil {
-			continue // Skip bad packets
-		}
-		
-		numSamples := int(n)
-		if isStereo {
-			// Downmix stereo to mono
-			mono := make([]byte, numSamples*2)
-			for i := 0; i < numSamples; i++ {
-				left := int16(binary.LittleEndian.Uint16(pcm[i*4 : i*4+2]))
-				right := int16(binary.LittleEndian.Uint16(pcm[i*4+2 : i*4+4]))
-				// Average the channels
-				avg := int16((int32(left) + int32(right)) / 2)
-				binary.LittleEndian.PutUint16(mono[i*2:i*2+2], uint16(avg))
-			}
-			allPcm = append(allPcm, mono...)
-		} else {
-			// Already mono, just append the used portion
-			allPcm = append(allPcm, pcm[:numSamples*2]...)
-		}
-	}
-	return allPcm, nil
-}
-
-func captionsOpusDecoder() *opus.Decoder {
-	d := opus.NewDecoder()
-	return &d
-}
-
-func EncodePCMToMP3(pcm []byte) ([]byte, error) {
-	// Use ffmpeg to encode Mono PCM (48kHz) to MP3
-	cmd := exec.Command("ffmpeg", "-f", "s16le", "-ar", "48000", "-ac", "1", "-i", "pipe:0", "-f", "mp3", "pipe:1")
-	cmd.Stdin = bytes.NewReader(pcm)
-	
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	err := cmd.Run()
-	if err != nil {
-		return nil, err
-	}
-	return out.Bytes(), nil
-}
