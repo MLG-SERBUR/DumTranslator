@@ -68,10 +68,7 @@ func (c *GroqClient) TranslateAudio(audioData []byte, filename string) (string, 
 	// 3. Set Temperature to 0 for deterministic outputs
 	_ = writer.WriteField("temperature", "0")
 
-	// 4. POSITIVE PROMPT ONLY
-	// Avoid negative prompts ("Do not say thank you"). Negative prompts prime Whisper's
-	// short-term memory with the exact words you are trying to avoid.
-	_ = writer.WriteField("prompt", "This is a transcript of an ongoing casual Discord voice conversation.")
+	// _ = writer.WriteField("prompt", "This is a transcript of an ongoing casual Discord voice conversation.")
 
 	err = writer.Close()
 	if err != nil {
@@ -108,6 +105,7 @@ func (c *GroqClient) TranslateAudio(audioData []byte, filename string) (string, 
 	for _, seg := range result.Segments {
 		// Rule A: If Whisper is > 60% sure there is no actual speech here, drop it.
 		// This mathematically catches silence/breathing turning into "Thank you."
+		log.Printf("Processing segment: '%s' (no_speech_prob=%.2f, compression_ratio=%.2f)", seg.Text, seg.NoSpeechProb, seg.CompressionRatio)
 		if seg.NoSpeechProb > 0.6 {
 			log.Printf("high no_speech_prob: '%s' (no_speech_prob=%.2f)", seg.Text, seg.NoSpeechProb)
 			continue
