@@ -22,16 +22,16 @@ type Manager struct {
 }
 
 type VoiceSession struct {
-	GuildID    string
-	ChannelID  string
-	VC         *discordgo.VoiceConnection
-	UserLogs   []string // List of "User: Text"
-	EmbedMsgID string
-	TextMsgID  string // The channel where the commands are typed
-	SSRCtoUser map[uint32]string
+	GuildID      string
+	ChannelID    string
+	VC           *discordgo.VoiceConnection
+	UserLogs     []string // List of "User: Text"
+	EmbedMsgID   string
+	TextMsgID    string // The channel where the commands are typed
+	SSRCtoUser   map[uint32]string
 	LastUserText map[uint32]string // Tracks the previous text per-user for the Whisper prompt
-	Done       chan bool
-	mu         sync.Mutex
+	Done         chan bool
+	mu           sync.Mutex
 }
 
 func NewManager(s *discordgo.Session, groq *translate.GroqClient) *Manager {
@@ -51,13 +51,13 @@ func (m *Manager) Start(guildID, channelID string, tcID string) error {
 	}
 
 	vs := &VoiceSession{
-		GuildID:    guildID,
-		ChannelID:  channelID,
-		UserLogs:   []string{},
-		SSRCtoUser: make(map[uint32]string),
+		GuildID:      guildID,
+		ChannelID:    channelID,
+		UserLogs:     []string{},
+		SSRCtoUser:   make(map[uint32]string),
 		LastUserText: make(map[uint32]string), // Initialize the new map
-		Done:       make(chan bool),
-		TextMsgID:  tcID,
+		Done:         make(chan bool),
+		TextMsgID:    tcID,
 	}
 
 	// 1. Pre-create the VoiceConnection and attach the handler BEFORE connecting.
@@ -178,7 +178,7 @@ func (m *Manager) Stop(guildID string) error {
 	// to Discord telling them we are leaving.
 	if vs.VC != nil {
 		// Prevent discordgo's internal reconnect() loop from re-joining.
-		// When the sleeping loop wakes up and tries to join "", 
+		// When the sleeping loop wakes up and tries to join "",
 		// it will safely disconnect and terminate the goroutine.
 		vs.VC.Lock()
 		vs.VC.ChannelID = ""
@@ -244,7 +244,9 @@ func (m *Manager) listenLoop(vs *VoiceSession) {
 }
 
 func (m *Manager) processChunk(vs *VoiceSession, ssrc uint32, packets []*discordgo.Packet) {
-	if len(packets) == 0 {
+	// Add this check!
+	// 25 packets * 20ms = 500ms. Don't waste API calls on mic clicks.
+	if len(packets) < 25 {
 		return
 	}
 
@@ -419,17 +421,17 @@ func (b *AudioBuffer) ShouldProcess() (bool, bool) {
 		return true, true
 	}
 
-	// 2. Natural Silence: 2 seconds (Increased from 800ms)
-	// Because duration includes the silence time, if silence is > 2s, 
-	// duration is automatically > 2s. We can drop the minimum duration check!
-	if silence > 2*time.Second {
+	// 2. Natural Silence + 10s Minimum Duration
+	// Wait until at least 10 seconds of time has passed since the first word,
+	// AND there has been a 2-second natural pause in speech.
+	if silence > 2*time.Second && duration >= 10*time.Second {
 		return true, false
 	}
 
 	return false, false
 }
 
-func (b *AudioBuffer) Pop(isHardCutoff bool)[]*discordgo.Packet {
+func (b *AudioBuffer) Pop(isHardCutoff bool) []*discordgo.Packet {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
