@@ -135,10 +135,10 @@ func (c *GroqClient) TranslateAudio(audioData []byte, filename string, prompt st
 			continue
 		}
 
-		if seg.AvgLogprob < -1.0 {
-			log.Printf("low avg_logprob: '%s' (no_speech_prob=%.2f, compression_ratio=%.2f, avg_logprob=%.2f)", seg.Text, seg.NoSpeechProb, seg.CompressionRatio, seg.AvgLogprob)
-			continue
-		}
+		// if seg.AvgLogprob < -1.0 {
+		// 	log.Printf("low avg_logprob: '%s' (no_speech_prob=%.2f, compression_ratio=%.2f, avg_logprob=%.2f)", seg.Text, seg.NoSpeechProb, seg.CompressionRatio, seg.AvgLogprob)
+		// 	continue
+		// }
 
 		// Rule B: If the compression ratio is unusually high, it's a repeating loop hallucination.
 		// (e.g. "Thank you. Thank you. Thank you.")
