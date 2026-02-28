@@ -137,7 +137,7 @@ func (c *GroqClient) TranslateAudio(audioData []byte, filename string, prompt st
 			continue
 		}
 
-		if seg.AvgLogprob < -0.5 {
+		if seg.AvgLogprob < -0.6 {
 			log.Printf("low avg_logprob: '%s' (no_speech_prob=%.2f, compression_ratio=%.2f, avg_logprob=%.2f)", seg.Text, seg.NoSpeechProb, seg.CompressionRatio, seg.AvgLogprob)
 			continue
 		}
