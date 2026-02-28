@@ -5,7 +5,7 @@ A powerful Discord bot that automatically translates messages and provides real-
 ## Screenshot Showcase
 
 <img width="441" height="281" alt="DumTranslator in action - automatic message translation with multiple translation backends" src="https://github.com/user-attachments/assets/d9e514c7-90ff-4eef-bdb4-396509d75826" />
-
+<p></p>
 <img width="360" height="456" alt="Real-time voice captions with automatic translation" src="https://github.com/user-attachments/assets/c6a651d6-6b4e-495d-b7a0-b51020e9b401" />
 
 
