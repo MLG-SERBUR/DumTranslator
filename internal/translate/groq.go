@@ -133,33 +133,33 @@ func (c *GroqClient) TranslateAudio(audioData []byte, filename string, prompt st
 		// Rule A: If Whisper is > 60% sure there is no actual speech here, drop it.
 		// This mathematically catches silence/breathing turning into "Thank you."
 		if seg.NoSpeechProb > 0.2 {
-			log.Printf("high no_speech_prob: '%s' (no_speech_prob=%.2f)", seg.Text, seg.NoSpeechProb)
+			log.Printf("high no_speech_prob: '%s' (no_speech_prob=%.2f, compression_ratio=%.2f, avg_logprob=%.2f)", seg.Text, seg.NoSpeechProb, seg.CompressionRatio, seg.AvgLogprob)
 			continue
 		}
 
 		if seg.AvgLogprob < -0.5 {
-			log.Printf("low avg_logprob: '%s' (avg_logprob=%.2f)", seg.Text, seg.AvgLogprob)
+			log.Printf("low avg_logprob: '%s' (no_speech_prob=%.2f, compression_ratio=%.2f, avg_logprob=%.2f)", seg.Text, seg.NoSpeechProb, seg.CompressionRatio, seg.AvgLogprob)
 			continue
 		}
 
 		// Rule B: If the compression ratio is unusually high, it's a repeating loop hallucination.
 		// (e.g. "Thank you. Thank you. Thank you.")
 		if seg.CompressionRatio > 2.0 {
-			log.Printf("high compression_ratio: '%s' (compression_ratio=%.2f)", seg.Text, seg.CompressionRatio)
+			log.Printf("high compression_ratio: '%s' (no_speech_prob=%.2f, compression_ratio=%.2f, avg_logprob=%.2f)", seg.Text, seg.NoSpeechProb, seg.CompressionRatio, seg.AvgLogprob)
 			continue
 		}
 
 		// Rule C: Pass the remaining text through our exact-match string filter
 		cleanedText := filterHallucinations(seg.Text)
 		if cleanedText == "" {
-			log.Printf("Blacklisted text: %q", seg.Text)
+			log.Printf("Blacklisted text: %q (no_speech_prob=%.2f, compression_ratio=%.2f, avg_logprob=%.2f)", seg.Text, seg.NoSpeechProb, seg.CompressionRatio, seg.AvgLogprob)
 			continue
 		}
 
+		log.Printf("'%s' (no_speech_prob=%.2f, compression_ratio=%.2f, avg_logprob=%.2f)", seg.Text, seg.NoSpeechProb, seg.CompressionRatio, seg.AvgLogprob)
+
 		// Update segment text with cleaned version
 		seg.Text = cleanedText
-
-		log.Printf("'%s' (no_speech_prob=%.2f, compression_ratio=%.2f, avg_logprob=%.2f)", seg.Text, seg.NoSpeechProb, seg.CompressionRatio, seg.AvgLogprob)
 
 		// Check for overlapping segments
 		if len(validSegments) == 0 {
@@ -183,6 +183,7 @@ func (c *GroqClient) TranslateAudio(audioData []byte, filename string, prompt st
 			// they are describing the same audio. Replace the last segment if the new one is longer.
 			if minDuration > 0 && overlapDuration >= 0.5*minDuration {
 				if len(strings.TrimSpace(seg.Text)) > len(strings.TrimSpace(lastSeg.Text)) {
+					log.Printf("Overlapping segments detected. Replacing '%s' with '%s'", lastSeg.Text, seg.Text)
 					validSegments[lastIdx] = seg
 				}
 			} else {
