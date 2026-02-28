@@ -89,10 +89,8 @@ func (c *GroqClient) TranslateAudio(audioData []byte, filename string, prompt st
 	// 3. Set Temperature to 0 for deterministic outputs
 	_ = writer.WriteField("temperature", "0")
 
-	// 4. Add the prompt if one is provided
-	// if prompt != "" {
-	// 	_ = writer.WriteField("prompt", prompt)
-	// }
+	// 4. Prompt is disabled as it didn't solve the overlap issue and introduced hallucinations from prior bad transcriptions.
+
 	err = writer.Close()
 	if err != nil {
 		return "", "", err
