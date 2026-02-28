@@ -132,7 +132,7 @@ func (m *Manager) Start(guildID, channelID string, tcID string) error {
 				return // Manual stop
 			case <-ticker.C:
 				attempts++
-				if vs.VC.Ready {
+				if vs.VC != nil && vs.VC.Ready {
 					connected = true
 					log.Printf("Voice connection ready.")
 				} else if attempts > 20 { // 10 seconds (20 * 500ms)
@@ -150,7 +150,7 @@ func (m *Manager) Start(guildID, channelID string, tcID string) error {
 			case <-vs.Done:
 				return
 			case <-ticker.C:
-				if !vs.VC.Ready {
+				if vs.VC == nil || !vs.VC.Ready {
 					log.Printf("Voice connection dropped (Ready=false), enforcing STOP to prevent reconnect.")
 					m.Stop(guildID)
 					return
