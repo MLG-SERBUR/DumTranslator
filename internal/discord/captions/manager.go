@@ -237,14 +237,24 @@ func (m *Manager) listenLoop(vs *VoiceSession) {
 				// Receive both the process flag and the hard cutoff flag
 				// 1. Check if the buffer WANTS to be processed
 				// (Silence > 2s OR Duration > 30s)
-				shouldProcess, isHardCutoff := buf.ShouldProcess()
+				shouldProcess, isHardCutoff, isStale := buf.ShouldProcess()
 
-				if !shouldProcess {
-					continue
+				if shouldProcess {
+					// If it's a hard cutoff OR the data is getting stale (waiting too long),
+					// we force it through (the GroqClient mutex will handle the sleep).
+					if isHardCutoff || isStale {
+						go m.processChunk(vs, ssrc, buf.Pop(isHardCutoff))
+					} else {
+						// Otherwise, be polite and wait for a free slot
+						if m.CanRequest() {
+							go m.processChunk(vs, ssrc, buf.Pop(false))
+						}
+						// Else: Wait, let buffer merge with potential future speech
+					}
 				}
 
 				// 2. CHECK RATE LIMIT (The Backpressure Logic)
-				
+
 				// Scenario A: Hard Cutoff (Buffer > 30s).
 				// We MUST process this to free memory/context, even if it causes a 429/delay.
 				if isHardCutoff {
@@ -252,7 +262,7 @@ func (m *Manager) listenLoop(vs *VoiceSession) {
 					continue
 				}
 
-				// Scenario B: Natural Pause. 
+				// Scenario B: Natural Pause.
 				// Only Pop() if the API is actually free.
 				if m.CanRequest() {
 					// API is free -> Send it!
@@ -261,8 +271,8 @@ func (m *Manager) listenLoop(vs *VoiceSession) {
 					// API is busy -> DO NOT POP.
 					// We do nothing here. The loop continues.
 					// The audio stays in 'buf'.
-					
-					// If the user speaks again in the next 1-2 seconds, 
+
+					// If the user speaks again in the next 1-2 seconds,
 					// 'buf' will grow larger (merging the phrases).
 					// This reduces total request count automatically.
 				}
@@ -431,12 +441,13 @@ func (b *AudioBuffer) Push(p *discordgo.Packet) {
 }
 
 // ShouldProcess returns (shouldProcess bool, isHardCutoff bool)
-func (b *AudioBuffer) ShouldProcess() (bool, bool) {
+// Returns: shouldProcess, isHardCutoff, isStale
+func (b *AudioBuffer) ShouldProcess() (bool, bool, bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
 	if len(b.Packets) == 0 {
-		return false, false
+		return false, false, false
 	}
 
 	duration := time.Since(b.FirstPush)
@@ -446,17 +457,23 @@ func (b *AudioBuffer) ShouldProcess() (bool, bool) {
 	// If the buffer grows larger than 30s, force a process event.
 	// Returns isHardCutoff = true to trigger the overlap retention.
 	if duration > 30*time.Second {
-		return true, true
+		return true, true, false
 	}
 
-	// 2. Natural Silence + 10s Minimum Duration
-	// Wait until at least 10 seconds of time has passed since the first word,
-	// AND there has been a 2-second natural pause in speech.
+	// 2. Stale Data (> 6s silence)
+	// If they haven't spoken in 6 seconds, we should just queue it up.
+	// We don't want to wait forever for a "merge" that isn't coming.
+	if silence > 6*time.Second {
+		return true, false, true
+	}
+
+	// 3. Natural Silence (> 2s)
+	// Ready to send, but willing to wait for a rate limit slot.
 	if silence > 2*time.Second && duration >= 10*time.Second {
-		return true, false
+		return true, false, false
 	}
 
-	return false, false
+	return false, false, false
 }
 
 func (b *AudioBuffer) Pop(isHardCutoff bool) []*discordgo.Packet {
@@ -483,7 +500,7 @@ func (b *AudioBuffer) Pop(isHardCutoff bool) []*discordgo.Packet {
 	return p
 }
 
-// CanRequest checks if the rate limit allows a request. 
+// CanRequest checks if the rate limit allows a request.
 // If yes, it reserves the slot for 3 seconds and returns true.
 // If no, it returns false (so we can keep buffering).
 func (m *Manager) CanRequest() bool {
