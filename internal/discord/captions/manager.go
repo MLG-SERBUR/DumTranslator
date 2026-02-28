@@ -284,7 +284,7 @@ func (m *Manager) listenLoop(vs *VoiceSession) {
 func (m *Manager) processChunk(vs *VoiceSession, ssrc uint32, packets []*discordgo.Packet) {
 	// Add this check!
 	// 25 packets * 20ms = 500ms. Don't waste API calls on mic clicks.
-	if len(packets) < 25 {
+	if len(packets) < 75 {
 		return
 	}
 
