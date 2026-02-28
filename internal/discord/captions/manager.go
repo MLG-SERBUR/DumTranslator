@@ -18,7 +18,10 @@ type Manager struct {
 	Session  *discordgo.Session
 	Groq     *translate.GroqClient
 	Sessions map[string]*VoiceSession // GuildID -> VoiceSession
-	mu       sync.Mutex
+	// Global Rate Limit Tracker
+	NextReqTime time.Time
+	ReqMu       sync.Mutex
+	mu          sync.Mutex
 }
 
 type VoiceSession struct {
@@ -232,11 +235,36 @@ func (m *Manager) listenLoop(vs *VoiceSession) {
 		case <-ticker.C:
 			for ssrc, buf := range userAudio {
 				// Receive both the process flag and the hard cutoff flag
+				// 1. Check if the buffer WANTS to be processed
+				// (Silence > 2s OR Duration > 30s)
 				shouldProcess, isHardCutoff := buf.ShouldProcess()
 
-				if shouldProcess {
-					// Pass the hard cutoff flag into Pop
-					go m.processChunk(vs, ssrc, buf.Pop(isHardCutoff))
+				if !shouldProcess {
+					continue
+				}
+
+				// 2. CHECK RATE LIMIT (The Backpressure Logic)
+				
+				// Scenario A: Hard Cutoff (Buffer > 30s).
+				// We MUST process this to free memory/context, even if it causes a 429/delay.
+				if isHardCutoff {
+					go m.processChunk(vs, ssrc, buf.Pop(true))
+					continue
+				}
+
+				// Scenario B: Natural Pause. 
+				// Only Pop() if the API is actually free.
+				if m.CanRequest() {
+					// API is free -> Send it!
+					go m.processChunk(vs, ssrc, buf.Pop(false))
+				} else {
+					// API is busy -> DO NOT POP.
+					// We do nothing here. The loop continues.
+					// The audio stays in 'buf'.
+					
+					// If the user speaks again in the next 1-2 seconds, 
+					// 'buf' will grow larger (merging the phrases).
+					// This reduces total request count automatically.
 				}
 			}
 		}
@@ -453,4 +481,21 @@ func (b *AudioBuffer) Pop(isHardCutoff bool) []*discordgo.Packet {
 	}
 
 	return p
+}
+
+// CanRequest checks if the rate limit allows a request. 
+// If yes, it reserves the slot for 3 seconds and returns true.
+// If no, it returns false (so we can keep buffering).
+func (m *Manager) CanRequest() bool {
+	m.ReqMu.Lock()
+	defer m.ReqMu.Unlock()
+
+	now := time.Now()
+	if now.Before(m.NextReqTime) {
+		return false
+	}
+
+	// Reserve the next slot (3 seconds from now)
+	m.NextReqTime = now.Add(3 * time.Second)
+	return true
 }
