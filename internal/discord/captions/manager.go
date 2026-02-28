@@ -14,6 +14,14 @@ import (
 	"github.com/user/dumtranslator/internal/translate"
 )
 
+// RateLimitInterval controls how often we send audio to Groq.
+// You can lower this (e.g., 1 * time.Second) for faster captions,
+// but it will use more API credits.
+//
+// NOTE: This is different from the Discord "wsHeartbeat". The Discord heartbeat
+// is automatic and cannot be changed manually (it is negotiated with the server).
+const RateLimitInterval = 3 * time.Second
+
 type Manager struct {
 	Session  *discordgo.Session
 	Groq     *translate.GroqClient
@@ -109,26 +117,41 @@ func (m *Manager) Start(guildID, channelID string, tcID string) error {
 
 	m.Sessions[guildID] = vs
 
-	// Monitoring goroutine to enforce "NEVER reconnect"
+	// 3. Start the Connection Monitor
+	// This ensures we do NOT attempt reconnect loops. If the connection drops, we kill it.
 	go func() {
-		// Wait for initial connection or timeout
-		timeout := time.After(10 * time.Second)
 		ticker := time.NewTicker(500 * time.Millisecond)
 		defer ticker.Stop()
 
+		// Phase 1: Wait for Initial Connection (up to 10 seconds)
+		connected := false
+		attempts := 0
+		for !connected {
+			select {
+			case <-vs.Done:
+				return // Manual stop
+			case <-ticker.C:
+				attempts++
+				if vs.VC.Ready {
+					connected = true
+					log.Printf("Voice connection ready.")
+				} else if attempts > 20 { // 10 seconds (20 * 500ms)
+					log.Printf("Voice connection timed out (Initial), stopping.")
+					m.Stop(guildID)
+					return
+				}
+			}
+		}
+
+		// Phase 2: Monitor for Drops
+		// If Ready becomes false after being true, we Stop immediately.
 		for {
 			select {
 			case <-vs.Done:
 				return
-			case <-timeout:
-				if !vs.VC.Ready {
-					log.Printf("Voice connection failed to become ready in time, stopping.")
-					m.Stop(guildID)
-					return
-				}
 			case <-ticker.C:
 				if !vs.VC.Ready {
-					log.Printf("Voice connection not ready, enforced STOP (no reconnect).")
+					log.Printf("Voice connection dropped (Ready=false), enforcing STOP to prevent reconnect.")
 					m.Stop(guildID)
 					return
 				}
@@ -180,9 +203,9 @@ func (m *Manager) Stop(guildID string) error {
 	// We call Disconnect() which sends the Opcode 4 (Gateway Voice State Update)
 	// to Discord telling them we are leaving.
 	if vs.VC != nil {
-		// Prevent discordgo's internal reconnect() loop from re-joining.
-		// When the sleeping loop wakes up and tries to join "",
-		// it will safely disconnect and terminate the goroutine.
+		// IMPORTANT: Setting ChannelID to empty BEFORE Disconnect
+		// tells discordgo's internal loop: "We are intentionally leaving."
+		// This prevents the library from triggering its automatic reconnect logic.
 		vs.VC.Lock()
 		vs.VC.ChannelID = ""
 		vs.VC.Unlock()
@@ -209,10 +232,7 @@ func (m *Manager) listenLoop(vs *VoiceSession) {
 	// Map to track per-user audio buffers
 	userAudio := make(map[uint32]*AudioBuffer)
 
-	// NOTE: vs.VC.AddHandler(...) has been successfully removed from here
-	// to prevent race conditions. It is handled in Start() instead.
-
-	ticker := time.NewTicker(500 * time.Millisecond)
+	ticker := time.NewTicker(200 * time.Millisecond) // Checked more frequently for smoother processing
 	defer ticker.Stop()
 	defer m.Stop(vs.GuildID) // Ensure cleanup if loop exits
 
@@ -501,8 +521,6 @@ func (b *AudioBuffer) Pop(isHardCutoff bool) []*discordgo.Packet {
 }
 
 // CanRequest checks if the rate limit allows a request.
-// If yes, it reserves the slot for 3 seconds and returns true.
-// If no, it returns false (so we can keep buffering).
 func (m *Manager) CanRequest() bool {
 	m.ReqMu.Lock()
 	defer m.ReqMu.Unlock()
@@ -512,7 +530,7 @@ func (m *Manager) CanRequest() bool {
 		return false
 	}
 
-	// Reserve the next slot (3 seconds from now)
-	m.NextReqTime = now.Add(3 * time.Second)
+	// Use the constant defined at the top (RateLimitInterval)
+	m.NextReqTime = now.Add(RateLimitInterval)
 	return true
 }

@@ -90,9 +90,9 @@ func (c *GroqClient) TranslateAudio(audioData []byte, filename string, prompt st
 	_ = writer.WriteField("temperature", "0")
 
 	// 4. Add the prompt if one is provided
-	if prompt != "" {
-		_ = writer.WriteField("prompt", prompt)
-	}
+	// if prompt != "" {
+	// 	_ = writer.WriteField("prompt", prompt)
+	// }
 	err = writer.Close()
 	if err != nil {
 		return "", "", err
@@ -128,7 +128,7 @@ func (c *GroqClient) TranslateAudio(audioData []byte, filename string, prompt st
 	var debugLogs []string
 	for _, seg := range result.Segments {
 		// Collect debug info for the footer
-		debugLogs = append(debugLogs, fmt.Sprintf("no_speech: %.2f, comp: %.2f", seg.NoSpeechProb, seg.CompressionRatio))
+		debugLogs = append(debugLogs, fmt.Sprintf("no_speech: %.2f, comp: %.2f, logprob: %.2f", seg.NoSpeechProb, seg.CompressionRatio, seg.AvgLogprob))
 
 		// Rule A: If Whisper is > 60% sure there is no actual speech here, drop it.
 		// This mathematically catches silence/breathing turning into "Thank you."
@@ -137,7 +137,7 @@ func (c *GroqClient) TranslateAudio(audioData []byte, filename string, prompt st
 			continue
 		}
 
-		if seg.AvgLogprob < -0.6 {
+		if seg.AvgLogprob < -1.0 {
 			log.Printf("low avg_logprob: '%s' (no_speech_prob=%.2f, compression_ratio=%.2f, avg_logprob=%.2f)", seg.Text, seg.NoSpeechProb, seg.CompressionRatio, seg.AvgLogprob)
 			continue
 		}
