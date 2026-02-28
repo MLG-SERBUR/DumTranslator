@@ -283,7 +283,7 @@ func (m *Manager) listenLoop(vs *VoiceSession) {
 func (m *Manager) processChunk(vs *VoiceSession, ssrc uint32, packets []*discordgo.Packet) {
 	// Add this check!
 	// 25 packets * 20ms = 500ms. Don't waste API calls on mic clicks.
-	if len(packets) < 75 {
+	if len(packets) < 25 {
 		return
 	}
 
@@ -331,27 +331,27 @@ func (m *Manager) processChunk(vs *VoiceSession, ssrc uint32, packets []*discord
 	}
 
 	// FIXED: Normalize timestamps and sequences
-    var fakeTimestamp uint32 = 0
-    var fakeSequence uint16 = 0
+	var fakeTimestamp uint32 = 0
+	var fakeSequence uint16 = 0
 
-    for _, p := range packets {
+	for _, p := range packets {
 		// Reconstruct standard RTP packet for the oggwriter
-        rtpPacket := &rtp.Packet{
-            Header: rtp.Header{
-                SequenceNumber: fakeSequence,
-                Timestamp:      fakeTimestamp,
-                SSRC:           p.SSRC,
-            },
-            Payload: p.Opus,
-        }
-        if err := ogg.WriteRTP(rtpPacket); err != nil {
-            log.Printf("Failed to write RTP packet: %v", err)
-        }
-        fakeValues := 960 // 20ms at 48kHz
-        fakeTimestamp += uint32(fakeValues)
-        fakeSequence++
-    }
-    ogg.Close()
+		rtpPacket := &rtp.Packet{
+			Header: rtp.Header{
+				SequenceNumber: fakeSequence,
+				Timestamp:      fakeTimestamp,
+				SSRC:           p.SSRC,
+			},
+			Payload: p.Opus,
+		}
+		if err := ogg.WriteRTP(rtpPacket); err != nil {
+			log.Printf("Failed to write RTP packet: %v", err)
+		}
+		fakeValues := 960 // 20ms at 48kHz
+		fakeTimestamp += uint32(fakeValues)
+		fakeSequence++
+	}
+	ogg.Close()
 
 	oggData := buf.Bytes()
 
@@ -368,7 +368,7 @@ func (m *Manager) processChunk(vs *VoiceSession, ssrc uint32, packets []*discord
 
 	// 2.5: Logging for debugging "Request too large"
 	durationEst := time.Duration(len(packets)*20) * time.Millisecond
-	log.Printf("[DEBUG] Sending to Groq: User=%s, Packets=%d, EstDuration=%v, Bytes=%d", 
+	log.Printf("[DEBUG] Sending to Groq: User=%s, Packets=%d, EstDuration=%v, Bytes=%d",
 		username, len(packets), durationEst, len(oggData))
 
 	// 3. Send to Groq with the new prompt parameter
