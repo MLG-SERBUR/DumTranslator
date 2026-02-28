@@ -90,9 +90,9 @@ func (c *GroqClient) TranslateAudio(audioData []byte, filename string, prompt st
 	_ = writer.WriteField("temperature", "0")
 
 	// 4. Add the prompt if one is provided
-	// if prompt != "" {
-	// 	_ = writer.WriteField("prompt", prompt)
-	// }
+	if prompt != "" {
+		_ = writer.WriteField("prompt", prompt)
+	}
 	err = writer.Close()
 	if err != nil {
 		return "", "", err
