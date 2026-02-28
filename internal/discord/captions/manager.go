@@ -254,7 +254,7 @@ func (m *Manager) listenLoop(vs *VoiceSession) {
 
 		case <-ticker.C:
 			for ssrc, buf := range userAudio {
-				
+
 				// 1. Check if the buffer WANTS to be processed
 				// (Silence > 2s OR Duration > 30s)
 				shouldProcess, isHardCutoff, isStale := buf.ShouldProcess()
@@ -269,12 +269,12 @@ func (m *Manager) listenLoop(vs *VoiceSession) {
 						if m.CanRequest() {
 							go m.processChunk(vs, ssrc, buf.Pop(false))
 						}
-						// Else: Wait, let buffer merge with potential future speech. 
-                        // It will naturally loop back here in 200ms and check CanRequest() again.
+						// Else: Wait, let buffer merge with potential future speech.
+						// It will naturally loop back here in 200ms and check CanRequest() again.
 					}
 				}
-                
-                // I DELETED BLOCK 2 ("CHECK RATE LIMIT") FROM HERE!
+
+				// I DELETED BLOCK 2 ("CHECK RATE LIMIT") FROM HERE!
 			}
 		}
 	}
@@ -466,9 +466,9 @@ func (b *AudioBuffer) ShouldProcess() (bool, bool, bool) {
 		return true, false, true
 	}
 
-	// 3. Natural Silence (> 2s)
+	// 3. Natural Silence (> 1s)
 	// Ready to send, but willing to wait for a rate limit slot.
-	if silence > 2*time.Second && duration >= 10*time.Second {
+	if silence > 1*time.Second {
 		return true, false, false
 	}
 
