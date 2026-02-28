@@ -330,23 +330,28 @@ func (m *Manager) processChunk(vs *VoiceSession, ssrc uint32, packets []*discord
 		return
 	}
 
-	for _, p := range packets {
-		// Reconstruct standard RTP packet for the oggwriter
-		rtpPacket := &rtp.Packet{
-			Header: rtp.Header{
-				SequenceNumber: p.Sequence,
-				Timestamp:      p.Timestamp,
-				SSRC:           p.SSRC,
-			},
-			Payload: p.Opus, // No decoding required!
-		}
-		if err := ogg.WriteRTP(rtpPacket); err != nil {
-			log.Printf("Failed to write RTP packet: %v", err)
-		}
-	}
+	// FIXED: Normalize timestamps and sequences
+    var fakeTimestamp uint32 = 0
+    var fakeSequence uint16 = 0
 
-	// Close is REQUIRED to write the End of Stream (EOS) flags for Ogg!
-	ogg.Close()
+    for _, p := range packets {
+		// Reconstruct standard RTP packet for the oggwriter
+        rtpPacket := &rtp.Packet{
+            Header: rtp.Header{
+                SequenceNumber: fakeSequence,
+                Timestamp:      fakeTimestamp,
+                SSRC:           p.SSRC,
+            },
+            Payload: p.Opus,
+        }
+        if err := ogg.WriteRTP(rtpPacket); err != nil {
+            log.Printf("Failed to write RTP packet: %v", err)
+        }
+        fakeValues := 960 // 20ms at 48kHz
+        fakeTimestamp += uint32(fakeValues)
+        fakeSequence++
+    }
+    ogg.Close()
 
 	oggData := buf.Bytes()
 
@@ -361,13 +366,18 @@ func (m *Manager) processChunk(vs *VoiceSession, ssrc uint32, packets []*discord
 		prompt = lastText
 	}
 
+	// 2.5: Logging for debugging "Request too large"
+	durationEst := time.Duration(len(packets)*20) * time.Millisecond
+	log.Printf("[DEBUG] Sending to Groq: User=%s, Packets=%d, EstDuration=%v, Bytes=%d", 
+		username, len(packets), durationEst, len(oggData))
+
 	// 3. Send to Groq with the new prompt parameter
 	text, debugStr, err := m.Groq.TranslateAudio(oggData, "audio.ogg", prompt)
 	if err != nil {
-		log.Printf("Groq error: %v", err)
+		// Log the full error and the size of the problematic data
+		log.Printf("Groq error: %v | Data Size: %d bytes | Packets: %d", err, len(oggData), len(packets))
 		return
 	}
-
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return
