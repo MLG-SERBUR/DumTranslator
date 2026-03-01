@@ -11,7 +11,9 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4/pkg/media/oggwriter"
+	"github.com/user/dumtranslator/internal/discord/captions/tenvad"
 	"github.com/user/dumtranslator/internal/translate"
+	"layeh.com/gopus"
 )
 
 // RateLimitInterval controls how often we send audio to Groq.
@@ -319,6 +321,39 @@ func (m *Manager) processChunk(vs *VoiceSession, ssrc uint32, packets []*discord
 			}
 		}
 	}
+
+	// --- VAD Filtering ---
+	vad, err := tenvad.NewVad(960, 0.5) // 960 samples = 20ms at 48kHz. threshold = 0.5
+	if err == nil {
+		defer vad.Close()
+		decoder, err := gopus.NewDecoder(48000, 1) // 1 channel downmix for VAD
+		if err == nil {
+			speechFrames := 0
+			totalFrames := 0
+
+			for _, p := range packets {
+				pcm, decErr := decoder.Decode(p.Opus, 960, false)
+				if decErr == nil {
+					totalFrames++
+					_, isSpeech, vadErr := vad.Process(pcm)
+					if vadErr == nil && isSpeech {
+						speechFrames++
+					}
+				}
+			}
+
+			// If less than 10% of the frames contain speech, drop the buffer
+			if totalFrames > 0 && float64(speechFrames)/float64(totalFrames) < 0.10 {
+				log.Printf("[VAD] Dropped buffer for %s: mostly silence/noise (%d/%d speech frames)", username, speechFrames, totalFrames)
+				return
+			}
+		} else {
+			log.Printf("[VAD] Failed to create opus decoder: %v", err)
+		}
+	} else {
+		log.Printf("[VAD] Failed to init TEN-VAD: %v", err)
+	}
+	// ---------------------
 
 	// 1. Write the raw Opus packets directly into an Ogg container in-memory
 	var buf bytes.Buffer

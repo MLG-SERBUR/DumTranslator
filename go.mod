@@ -2,9 +2,7 @@ module github.com/user/dumtranslator
 
 go 1.24.0
 
-require (
-	github.com/bwmarrin/discordgo v0.29.1-0.20260214123928-f43dd94faaac
-)
+require github.com/bwmarrin/discordgo v0.29.1-0.20260214123928-f43dd94faaac
 
 require (
 	github.com/google/uuid v1.6.0 // indirect
@@ -30,4 +28,5 @@ require (
 	golang.org/x/net v0.50.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/time v0.10.0 // indirect
+	layeh.com/gopus v0.0.0-20210501142526-1ee02d434e32 // indirect
 )
