@@ -342,8 +342,8 @@ func (m *Manager) processChunk(vs *VoiceSession, ssrc uint32, packets []*discord
 				}
 			}
 
-			// If less than 10% of the frames contain speech, drop the buffer
-			if totalFrames > 0 && float64(speechFrames)/float64(totalFrames) < 0.10 {
+			// If less than 5% of the frames contain speech, drop the buffer
+			if totalFrames > 0 && float64(speechFrames)/float64(totalFrames) < 0.05 {
 				log.Printf("[VAD] Dropped buffer for %s: mostly silence/noise (%d/%d speech frames)", username, speechFrames, totalFrames)
 				return
 			}
