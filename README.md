@@ -58,8 +58,10 @@ For API key setup, refer to each service's documentation.
 
 ### Prerequisites
 1. **Go 1.22+**: [Install Go](https://go.dev/doc/install)
-2. **Discord Bot Token**: Create at [Discord Developer Portal](https://discord.com/developers/applications)
-3. **API Keys**: Get keys for your preferred translation services
+2. **C/C++ Build Tools**: Required for TEN-VAD and Opus decoding (CGO).
+   - Ubuntu/Debian: `sudo apt-get install gcc build-essential libopus-dev libc++-dev libc++abi-dev`
+3. **Discord Bot Token**: Create at [Discord Developer Portal](https://discord.com/developers/applications)
+4. **API Keys**: Get keys for your preferred translation services
 
 ### Installation
 1. Clone this repository

@@ -10,7 +10,7 @@ package tenvad
 #cgo CFLAGS: -I${SRCDIR}
 
 // Linux AMD64
-#cgo linux,amd64 LDFLAGS: -L${SRCDIR} -lten_vad -Wl,-rpath,'$ORIGIN':${SRCDIR}
+#cgo linux,amd64 LDFLAGS: -L${SRCDIR} -lten_vad -lc++ -lc++abi -Wl,-rpath,'$ORIGIN':${SRCDIR}
 
 #include "ten_vad.h"
 #include <stdlib.h> // Required for C.free if ever used directly for strings (not in this API but good practice)
@@ -115,6 +115,8 @@ func NewVad(hopSize int, threshold float32) (*Vad, error) {
 	if ret != 0 || inst == nil {
 		return nil, ErrVadInitFailed
 	}
+
+	fmt.Println("[DEBUG] TEN-VAD instance created successfully! Native C library loaded and linked.")
 
 	v := &Vad{
 		instance: inst,
