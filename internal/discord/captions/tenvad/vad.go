@@ -116,8 +116,6 @@ func NewVad(hopSize int, threshold float32) (*Vad, error) {
 		return nil, ErrVadInitFailed
 	}
 
-	fmt.Println("[DEBUG] TEN-VAD instance created successfully! Native C library loaded and linked.")
-
 	v := &Vad{
 		instance: inst,
 		hopSize:  hopSize,
