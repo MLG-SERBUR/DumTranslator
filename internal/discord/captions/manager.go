@@ -433,8 +433,8 @@ func (m *Manager) addCaption(vs *VoiceSession, username, text string, debugStr s
 
 	line := fmt.Sprintf("**%s**: %s", username, text)
 	vs.UserLogs = append(vs.UserLogs, line)
-	if len(vs.UserLogs) > 10 {
-		vs.UserLogs = vs.UserLogs[len(vs.UserLogs)-10:]
+	if len(vs.UserLogs) > 15 {
+		vs.UserLogs = vs.UserLogs[len(vs.UserLogs)-15:]
 	}
 
 	content := strings.Join(vs.UserLogs, "\n")
