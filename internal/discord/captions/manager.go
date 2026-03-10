@@ -205,6 +205,13 @@ func (m *Manager) Stop(guildID string) error {
 	// We call Disconnect() which sends the Opcode 4 (Gateway Voice State Update)
 	// to Discord telling them we are leaving.
 	if vs.VC != nil {
+		// IMPORTANT: Setting ChannelID to empty BEFORE Disconnect
+		// tells discordgo's internal loop: "We are intentionally leaving."
+		// This prevents the library from triggering its automatic reconnect logic.
+		vs.VC.Lock()
+		vs.VC.ChannelID = ""
+		vs.VC.Unlock()
+
 		vs.VC.Disconnect()
 	}
 
