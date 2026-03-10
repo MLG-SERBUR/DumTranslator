@@ -227,6 +227,9 @@ func filterHallucinations(text string) string {
 		"thanks guys":                  true,
 		"i'll see you in the next one": true,
 		"if you'd like to subscribe":   true,
+		"Subtitles by the Amara.org community": true,
+		"Thanks for watching": true,
+		"I'm sorry": true,
 	}
 
 	if hallucinations[lower] {
