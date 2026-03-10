@@ -145,20 +145,6 @@ func (m *Manager) Start(guildID, channelID string, tcID string) error {
 			}
 		}
 
-		// Phase 2: Monitor for Drops
-		// If Ready becomes false after being true, we Stop immediately.
-		for {
-			select {
-			case <-vs.Done:
-				return
-			case <-ticker.C:
-				if vs.VC == nil || !vs.VC.Ready {
-					log.Printf("Voice connection dropped (Ready=false), enforcing STOP to prevent reconnect.")
-					m.Stop(guildID)
-					return
-				}
-			}
-		}
 	}()
 
 	go m.listenLoop(vs)
@@ -205,13 +191,6 @@ func (m *Manager) Stop(guildID string) error {
 	// We call Disconnect() which sends the Opcode 4 (Gateway Voice State Update)
 	// to Discord telling them we are leaving.
 	if vs.VC != nil {
-		// IMPORTANT: Setting ChannelID to empty BEFORE Disconnect
-		// tells discordgo's internal loop: "We are intentionally leaving."
-		// This prevents the library from triggering its automatic reconnect logic.
-		vs.VC.Lock()
-		vs.VC.ChannelID = ""
-		vs.VC.Unlock()
-
 		vs.VC.Disconnect()
 	}
 

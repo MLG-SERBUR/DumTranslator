@@ -81,6 +81,12 @@ func main() {
 		log.Fatalf("Error creating Discord session: %v", err)
 	}
 
+	// Disable automatic gateway/websocket reconnection
+	dg.ShouldReconnectOnError = false
+
+	// Disable automatic voice channel reconnection
+	dg.ShouldReconnectVoiceOnSessionError = false
+
 	// Init Captions Manager
 	captionsMgr := captions.NewManager(dg, groq)
 	handler.Captions = captionsMgr
