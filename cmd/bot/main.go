@@ -169,11 +169,7 @@ func main() {
 		existingByName[cmd.Name] = cmd
 	}
 
-	// Build a set of the command names we want to register
-	ownedNames := make(map[string]bool)
-	for _, cmd := range ownedCommands {
-		ownedNames[cmd.Name] = true
-	}
+
 
 	// Delete existing versions of our commands so we can re-create them fresh
 	for _, cmd := range ownedCommands {
@@ -186,16 +182,7 @@ func main() {
 		}
 	}
 
-	// If captions is disabled, also clean up any leftover captions command from a previous run
-	if !captionsOn {
-		if existing, ok := existingByName["captions"]; ok {
-			log.Printf("  Deleting leftover captions command (captions_enabled=false)")
-			err = dg.ApplicationCommandDelete(appID, "", existing.ID)
-			if err != nil {
-				log.Printf("  Warning: failed to delete captions command: %v", err)
-			}
-		}
-	}
+
 
 	// Create our commands
 	for _, cmd := range ownedCommands {
