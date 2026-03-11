@@ -70,7 +70,7 @@ func main() {
 	// Init Groq STT
 	groq := translate.NewGroqClient(cfg.GroqAPIKey, cfg.STTModel)
 
-	order := []string{"TranslateAPI", "MyMemory", "Cerebras", "Cerebras+", "Mistral", "Mistral+"}
+	order := []string{"TranslateAPI", "MyMemory", "Cerebras", "Cerebras+", "Mistral", "Mistral+", "Google"}
 
 	// Init Discord Handler
 	handler := discord.NewHandler(translators, order, cfg, *configPath, channelStore)

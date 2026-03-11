@@ -462,7 +462,7 @@ func NewGoogleTranslate() *GoogleTranslate {
 }
 
 func (g *GoogleTranslate) DisplayName() string {
-	return "Google Translate"
+	return "Google"
 }
 
 type GoogleResponse struct {

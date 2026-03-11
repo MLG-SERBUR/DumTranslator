@@ -139,15 +139,6 @@ func (h *Handler) handleCommandInteraction(s *discordgo.Session, i *discordgo.In
 		}
 
 		newBackend := options[0].StringValue()
-		if newBackend == "Google" {
-			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseChannelMessageWithSource,
-				Data: &discordgo.InteractionResponseData{
-					Content: fmt.Sprintf("%s is a one-off backend and cannot be set as default.", newBackend),
-				},
-			})
-			return
-		}
 		if _, ok := h.Translators[newBackend]; !ok {
 			var available []string
 			for _, b := range h.BackendOrder {
@@ -293,18 +284,14 @@ func (h *Handler) handleComponentInteraction(s *discordgo.Session, i *discordgo.
 	}
 	nextBackend := i.MessageComponentData().Values[0]
 
-	// Update the default backend for everyone (unless it's a one-off backend)
-	isOneOff := (nextBackend == "Google")
-	if !isOneOff {
-		h.mu.Lock()
-		h.ActiveBackend = nextBackend
-		h.Config.Backend = nextBackend
-		err = h.Config.Save(h.ConfigPath)
-		h.mu.Unlock()
+	h.mu.Lock()
+	h.ActiveBackend = nextBackend
+	h.Config.Backend = nextBackend
+	err = h.Config.Save(h.ConfigPath)
+	h.mu.Unlock()
 
-		if err != nil {
-			log.Printf("Error saving config: %v", err)
-		}
+	if err != nil {
+		log.Printf("Error saving config: %v", err)
 	}
 
 	// Get the original message that triggered this translation
@@ -413,16 +400,6 @@ func (h *Handler) createBackendSelectMenu(messageID string, activeBackend string
 		})
 	}
 
-	// Add one-off backends
-	for _, b := range []string{"Google"} {
-		if translator, ok := h.Translators[b]; ok {
-			options = append(options, discordgo.SelectMenuOption{
-				Label:   translator.DisplayName(),
-				Value:   b,
-				Default: activeBackend == b,
-			})
-		}
-	}
 
 	return discordgo.ActionsRow{
 		Components: []discordgo.MessageComponent{

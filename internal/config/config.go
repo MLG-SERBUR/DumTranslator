@@ -19,7 +19,7 @@ type Config struct {
 	GroqAPIKey      string   `json:"groq_api_key"`
 	CaptionsEnabled *bool    `json:"captions_enabled"` // Pointer to distinguish between missing and false
 	STTModel        string   `json:"stt_model"`        // Default: whisper-large-v3-turbo
-	Backend         string   `json:"backend"`          // "TranslateAPI", "MyMemory", "Cerebras", "Mistral", "ArliAI"
+	Backend         string   `json:"backend"`          // "TranslateAPI", "MyMemory", "Cerebras", "Mistral", "ArliAI", "Google"
 	TargetChannels  []string `json:"target_channels"` // Initial channels from config
 }
 
