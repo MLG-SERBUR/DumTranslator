@@ -87,16 +87,22 @@ func main() {
 	// Disable automatic voice channel reconnection
 	dg.ShouldReconnectVoiceOnSessionError = false
 
-	// Init Captions Manager
-	captionsMgr := captions.NewManager(dg, groq)
-	handler.Captions = captionsMgr
+	// Init Captions Manager (only if enabled)
+	captionsOn := cfg.CaptionsEnabled != nil && *cfg.CaptionsEnabled
+	if captionsOn {
+		captionsMgr := captions.NewManager(dg, groq)
+		handler.Captions = captionsMgr
+	}
 
 	// Register Handlers
 	dg.AddHandler(handler.MessageCreate)
-    dg.AddHandler(handler.InteractionCreate)
+	dg.AddHandler(handler.InteractionCreate)
 
-    // Identify Intent
-    dg.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentsMessageContent | discordgo.IntentsGuildVoiceStates
+	// Identify Intent
+	dg.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentsMessageContent
+	if captionsOn {
+		dg.Identify.Intents |= discordgo.IntentsGuildVoiceStates
+	}
 
 	// Open Connection
 	err = dg.Open()
@@ -104,55 +110,101 @@ func main() {
 		log.Fatalf("Error opening connection: %v", err)
 	}
 
-    // Register Slash Commands
-    commands := []*discordgo.ApplicationCommand{
-        {
-            Name: "listen",
-            Description: "Start translating messages in this channel",
-        },
-        {
-            Name: "ignore",
-            Description: "Stop translating messages in this channel",
-        },
-        {
-            Name: "backend",
-            Description: "Switch translation backend",
-            Options: []*discordgo.ApplicationCommandOption{
-                {
-                    Type:        discordgo.ApplicationCommandOptionString,
-                    Name:        "name",
-                    Description: "Backend name (TranslateAPI, MyMemory, Cerebras, Cerebras+, Mistral, Mistral+)",
-                    Required:    false,
-                },
-            },
-        },
-        {
-            Name:        "captions",
-            Description: "Manage real-time translated captions in voice channels",
-            Options: []*discordgo.ApplicationCommandOption{
-                {
-                    Type:        discordgo.ApplicationCommandOptionSubCommand,
-                    Name:        "on",
-                    Description: "Start captions in your current voice channel",
-                },
-                {
-                    Type:        discordgo.ApplicationCommandOptionSubCommand,
-                    Name:        "off",
-                    Description: "Stop captions and leave the voice channel",
-                },
-            },
-        },
-    }
-    
-    // Bulk overwrite to ensure immediate update (GLOBAL commands take 1 hour, but guild commands are instant. 
-    // For simplicity in a general bot, we use global but user should know about propagation.
-    // Or we can just log it.) 
-    // Edit: Since we don't know the GuildID from config, we register globally. 
-    log.Println("Registering slash commands...")
-    _, err = dg.ApplicationCommandBulkOverwrite(dg.State.User.ID, "", commands)
-    if err != nil {
-        log.Fatalf("Cannot create slash commands: %v", err)
-    }
+	// Define the slash commands this bot owns
+	ownedCommands := []*discordgo.ApplicationCommand{
+		{
+			Name:        "listen",
+			Description: "Start translating messages in this channel",
+		},
+		{
+			Name:        "ignore",
+			Description: "Stop translating messages in this channel",
+		},
+		{
+			Name:        "backend",
+			Description: "Switch translation backend",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "name",
+					Description: "Backend name (TranslateAPI, MyMemory, Cerebras, Cerebras+, Mistral, Mistral+)",
+					Required:    false,
+				},
+			},
+		},
+	}
+
+	// Conditionally include the captions command
+	if captionsOn {
+		ownedCommands = append(ownedCommands, &discordgo.ApplicationCommand{
+			Name:        "captions",
+			Description: "Manage real-time translated captions in voice channels",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "on",
+					Description: "Start captions in your current voice channel",
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionSubCommand,
+					Name:        "off",
+					Description: "Stop captions and leave the voice channel",
+				},
+			},
+		})
+	}
+
+	// Selectively register only our commands (don't overwrite commands from other projects).
+	// Fetch existing global commands, delete+re-create ours, and remove captions if disabled.
+	log.Println("Registering slash commands...")
+	appID := dg.State.User.ID
+	existingCmds, err := dg.ApplicationCommands(appID, "")
+	if err != nil {
+		log.Fatalf("Cannot fetch existing commands: %v", err)
+	}
+
+	// Build a lookup of existing commands by name
+	existingByName := make(map[string]*discordgo.ApplicationCommand)
+	for _, cmd := range existingCmds {
+		existingByName[cmd.Name] = cmd
+	}
+
+	// Build a set of the command names we want to register
+	ownedNames := make(map[string]bool)
+	for _, cmd := range ownedCommands {
+		ownedNames[cmd.Name] = true
+	}
+
+	// Delete existing versions of our commands so we can re-create them fresh
+	for _, cmd := range ownedCommands {
+		if existing, ok := existingByName[cmd.Name]; ok {
+			log.Printf("  Deleting existing command: %s", cmd.Name)
+			err = dg.ApplicationCommandDelete(appID, "", existing.ID)
+			if err != nil {
+				log.Printf("  Warning: failed to delete command %s: %v", cmd.Name, err)
+			}
+		}
+	}
+
+	// If captions is disabled, also clean up any leftover captions command from a previous run
+	if !captionsOn {
+		if existing, ok := existingByName["captions"]; ok {
+			log.Printf("  Deleting leftover captions command (captions_enabled=false)")
+			err = dg.ApplicationCommandDelete(appID, "", existing.ID)
+			if err != nil {
+				log.Printf("  Warning: failed to delete captions command: %v", err)
+			}
+		}
+	}
+
+	// Create our commands
+	for _, cmd := range ownedCommands {
+		log.Printf("  Creating command: %s", cmd.Name)
+		_, err = dg.ApplicationCommandCreate(appID, "", cmd)
+		if err != nil {
+			log.Fatalf("Cannot create slash command %s: %v", cmd.Name, err)
+		}
+	}
 
 	fmt.Println("DumTranslator is now running. Press CTRL-C to exit.")
 	
