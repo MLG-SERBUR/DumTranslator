@@ -170,13 +170,6 @@ func (h *Handler) handleCommandInteraction(s *discordgo.Session, i *discordgo.In
 		})
 	case "captions":
 		if h.Config.CaptionsEnabled != nil && !*h.Config.CaptionsEnabled {
-			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseChannelMessageWithSource,
-				Data: &discordgo.InteractionResponseData{
-					Content: "Captions are currently disabled in the configuration.",
-					Flags:   discordgo.MessageFlagsEphemeral,
-				},
-			})
 			return
 		}
 
