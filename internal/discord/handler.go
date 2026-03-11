@@ -374,7 +374,7 @@ func (h *Handler) sendWebhook(s *discordgo.Session, m *discordgo.MessageCreate, 
 
 	_, err = s.WebhookExecute(webhookID, webhookToken, true, &discordgo.WebhookParams{
 		Content:    content,
-		Username:   displayName + " (translated)",
+		Username:   displayName,
 		AvatarURL:  m.Author.AvatarURL(""),
 		Components: []discordgo.MessageComponent{actionRow},
 	})
