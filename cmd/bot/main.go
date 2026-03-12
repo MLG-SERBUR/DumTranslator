@@ -81,8 +81,8 @@ func main() {
 		log.Fatalf("Error creating Discord session: %v", err)
 	}
 
-	// Disable automatic gateway/websocket reconnection
-	dg.ShouldReconnectOnError = false
+	// Enable automatic gateway/websocket reconnection
+	dg.ShouldReconnectOnError = true
 
 	// Disable automatic voice channel reconnection
 	dg.ShouldReconnectVoiceOnSessionError = false
@@ -97,6 +97,20 @@ func main() {
 	// Register Handlers
 	dg.AddHandler(handler.MessageCreate)
 	dg.AddHandler(handler.InteractionCreate)
+
+	// Register Connection logging handlers
+	dg.AddHandler(func(s *discordgo.Session, c *discordgo.Connect) {
+		log.Println("Connected to Discord Gateway.")
+	})
+	dg.AddHandler(func(s *discordgo.Session, d *discordgo.Disconnect) {
+		log.Println("Disconnected from Discord Gateway.")
+	})
+	dg.AddHandler(func(s *discordgo.Session, r *discordgo.Resumed) {
+		log.Println("Discord session resumed.")
+	})
+	dg.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {
+		log.Printf("Logged in as: %v#%v", s.State.User.Username, s.State.User.Discriminator)
+	})
 
 	// Identify Intent
 	dg.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentsMessageContent
