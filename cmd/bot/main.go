@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/user/dumtranslator/internal/config"
@@ -215,5 +216,18 @@ func main() {
 	<-sc
 
 	// Cleanly close down the Discord session.
-	dg.Close()
+	// Since the bot can become stuck trying to disconnect while the network is down or the gateway is reconnecting,
+	// we enforce a timeout limit on the Close() method.
+	shutdownDone := make(chan struct{})
+	go func() {
+		dg.Close()
+		close(shutdownDone)
+	}()
+
+	select {
+	case <-shutdownDone:
+		log.Println("Disconnected cleanly.")
+	case <-time.After(5 * time.Second):
+		log.Println("Timeout while disconnecting. Exiting forcefully.")
+	}
 }
