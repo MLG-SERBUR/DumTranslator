@@ -82,6 +82,13 @@ func main() {
 		log.Fatalf("Error creating Discord session: %v", err)
 	}
 
+	// Set discordgo logging to use the standard log package
+	// This will log internal gateway errors, heartbeats, and reconnection attempts.
+	dg.LogLevel = discordgo.LogWarning // Log warnings and errors
+	discordgo.Logger = func(msgL, caller int, format string, a ...interface{}) {
+		log.Printf("DISCORDGO [%d]: %s", msgL, fmt.Sprintf(format, a...))
+	}
+
 	// Enable automatic gateway/websocket reconnection
 	dg.ShouldReconnectOnError = true
 

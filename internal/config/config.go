@@ -3,7 +3,7 @@ package config
 import (
 	"encoding/json"
 	"os"
-
+	"sync"
 )
 
 type Config struct {
@@ -27,6 +27,7 @@ type Config struct {
 type ChannelStore struct {
 	Channels map[string]bool `json:"channels"`
 	FilePath string
+	mu       sync.RWMutex
 }
 
 func LoadConfig(path string) (*Config, error) {
@@ -92,15 +93,21 @@ func (cs *ChannelStore) Save() error {
 }
 
 func (cs *ChannelStore) Add(channelID string) error {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
 	cs.Channels[channelID] = true
 	return cs.Save()
 }
 
 func (cs *ChannelStore) Remove(channelID string) error {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
 	delete(cs.Channels, channelID)
 	return cs.Save()
 }
 
 func (cs *ChannelStore) Has(channelID string) bool {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
 	return cs.Channels[channelID]
 }
