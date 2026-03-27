@@ -17,8 +17,8 @@ import (
 )
 
 func main() {
-    configPath := flag.String("config", "config.json", "Path to config file")
-    flag.Parse()
+	configPath := flag.String("config", "config.json", "Path to config file")
+	flag.Parse()
 
 	// Load Config
 	cfg, err := config.LoadConfig(*configPath)
@@ -26,12 +26,12 @@ func main() {
 		log.Fatalf("Error loading config: %v", err)
 	}
 
-    // Load/Init Channel Store
-    // We use a separate file "channels.json" for persistence
-    channelStore, err := config.NewChannelStore("channels.json", cfg.TargetChannels)
-    if err != nil {
-        log.Fatalf("Error loading channel store: %v", err)
-    }
+	// Load/Init Channel Store
+	// We use a separate file "channels.json" for persistence
+	channelStore, err := config.NewChannelStore("channels.json", cfg.TargetChannels, config.DefaultChannelSettings(cfg))
+	if err != nil {
+		log.Fatalf("Error loading channel store: %v", err)
+	}
 
 	// Init Translators
 	tAPI := translate.NewTranslateAPI(cfg.TranslateAPIKey)
@@ -39,11 +39,11 @@ func main() {
 	cer := translate.NewCerebras(cfg.CerebrasAPIKey, cfg.CerebrasModel)
 	mis := translate.NewMistral(cfg.MistralAPIKey, cfg.MistralModel)
 	// arliai := translate.NewArliAI(cfg.ArliAIAPIKey, cfg.ArliAIModel)
-    google := translate.NewGoogleTranslate()
+	google := translate.NewGoogleTranslate()
 
 	// Init Specialized (+) Translators
 	plusPrompt := "Translate the following text to natural, fluent, idiomatic English while preserving the original tone, intent, and cultural nuances; do not output anything else: %s"
-	
+
 	cerPlus := translate.NewCerebras(cfg.CerebrasAPIKey, cfg.CerebrasModel)
 	cerPlus.Prompt = plusPrompt
 	cerPlus.DisplayNameOverride = fmt.Sprintf("Cerebras (%s) (+)", cfg.CerebrasModel)
@@ -53,9 +53,9 @@ func main() {
 	misPlus.DisplayNameOverride = fmt.Sprintf("Mistral (%s) (+)", cfg.MistralModel)
 
 	/*
-	arliaiPlus := translate.NewArliAI(cfg.ArliAIAPIKey, cfg.ArliAIModel)
-	arliaiPlus.Prompt = plusPrompt
-	arliaiPlus.DisplayNameOverride = fmt.Sprintf("ArliAI (%s) (+)", cfg.ArliAIModel)
+		arliaiPlus := translate.NewArliAI(cfg.ArliAIAPIKey, cfg.ArliAIModel)
+		arliaiPlus.Prompt = plusPrompt
+		arliaiPlus.DisplayNameOverride = fmt.Sprintf("ArliAI (%s) (+)", cfg.ArliAIModel)
 	*/
 
 	translators := map[string]translate.Translator{
@@ -74,7 +74,7 @@ func main() {
 	order := []string{"TranslateAPI", "MyMemory", "Cerebras", "Cerebras+", "Mistral", "Mistral+", "Google"}
 
 	// Init Discord Handler
-	handler := discord.NewHandler(translators, order, cfg, *configPath, channelStore)
+	handler := discord.NewHandler(translators, order, cfg, channelStore)
 
 	// Init Discord Session
 	dg, err := discordgo.New("Bot " + cfg.DiscordToken)
@@ -132,52 +132,58 @@ func main() {
 		log.Fatalf("Error opening connection: %v", err)
 	}
 
-	// Define the slash commands this bot owns
-	ownedCommands := []*discordgo.ApplicationCommand{
-		{
-			Name:        "listen",
-			Description: "Start translating messages in this channel",
-		},
-		{
-			Name:        "ignore",
-			Description: "Stop translating messages in this channel",
-		},
-		{
-			Name:        "backend",
-			Description: "Switch translation backend",
-			Options: []*discordgo.ApplicationCommandOption{
-				{
-					Type:        discordgo.ApplicationCommandOptionString,
-					Name:        "name",
-					Description: "Backend name (TranslateAPI, MyMemory, Cerebras, Cerebras+, Mistral, Mistral+)",
-					Required:    false,
-				},
-			},
-		},
-	}
-
-	// Conditionally include the captions command
-	if captionsOn {
-		ownedCommands = append(ownedCommands, &discordgo.ApplicationCommand{
-			Name:        "captions",
-			Description: "Manage real-time translated captions in voice channels",
-			Options: []*discordgo.ApplicationCommandOption{
-				{
-					Type:        discordgo.ApplicationCommandOptionSubCommand,
-					Name:        "on",
-					Description: "Start captions in your current voice channel",
-				},
-				{
-					Type:        discordgo.ApplicationCommandOptionSubCommand,
-					Name:        "off",
-					Description: "Stop captions and leave the voice channel",
-				},
-			},
+	// Define the slash commands this process manages.
+	backendChoices := make([]*discordgo.ApplicationCommandOptionChoice, 0, len(order))
+	for _, backend := range order {
+		backendChoices = append(backendChoices, &discordgo.ApplicationCommandOptionChoice{
+			Name:  translators[backend].DisplayName(),
+			Value: backend,
 		})
 	}
 
+	onOffChoices := []*discordgo.ApplicationCommandOptionChoice{
+		{
+			Name:  "on",
+			Value: "on",
+		},
+		{
+			Name:  "off",
+			Value: "off",
+		},
+	}
+
+	ownedCommands := []*discordgo.ApplicationCommand{
+		{
+			Name:        "translate",
+			Description: "Manage translation settings for this channel",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "enabled",
+					Description: "Turn translation on or off for this channel",
+					Required:    false,
+					Choices:     onOffChoices,
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "backend",
+					Description: "Backend to use for this channel when translation is on",
+					Required:    false,
+					Choices:     backendChoices,
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "interaction_selection",
+					Description: "Enable or disable the backend select dropdown on translated messages",
+					Required:    false,
+					Choices:     onOffChoices,
+				},
+			},
+		},
+	}
+
 	// Selectively register only our commands (don't overwrite commands from other projects).
-	// Fetch existing global commands, delete+re-create ours, and remove captions if disabled.
+	// Fetch existing global commands and only replace `/translate`.
 	log.Println("Registering slash commands...")
 	appID := dg.State.User.ID
 	existingCmds, err := dg.ApplicationCommands(appID, "")
@@ -185,26 +191,16 @@ func main() {
 		log.Fatalf("Cannot fetch existing commands: %v", err)
 	}
 
-	// Build a lookup of existing commands by name
-	existingByName := make(map[string]*discordgo.ApplicationCommand)
-	for _, cmd := range existingCmds {
-		existingByName[cmd.Name] = cmd
-	}
-
-
-
-	// Delete existing versions of our commands so we can re-create them fresh
-	for _, cmd := range ownedCommands {
-		if existing, ok := existingByName[cmd.Name]; ok {
-			log.Printf("  Deleting existing command: %s", cmd.Name)
+	// Delete the existing `/translate` command so we can re-create it fresh.
+	for _, existing := range existingCmds {
+		if existing.Name == "translate" {
+			log.Printf("  Deleting existing command: %s", existing.Name)
 			err = dg.ApplicationCommandDelete(appID, "", existing.ID)
 			if err != nil {
-				log.Printf("  Warning: failed to delete command %s: %v", cmd.Name, err)
+				log.Printf("  Warning: failed to delete command %s: %v", existing.Name, err)
 			}
 		}
 	}
-
-
 
 	// Create our commands
 	for _, cmd := range ownedCommands {
@@ -216,7 +212,7 @@ func main() {
 	}
 
 	fmt.Println("DumTranslator is now running. Press CTRL-C to exit.")
-	
+
 	// Wait here until CTRL-C or other term signal is received.
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"strings"
-	"sync"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/user/dumtranslator/internal/config"
@@ -13,36 +12,23 @@ import (
 )
 
 type Handler struct {
-	Translators   map[string]translate.Translator
-	BackendOrder  []string
-	ActiveBackend string
-	Channels      *config.ChannelStore
-	WebhookCache  map[string]string // map[channelID]webhookID
-	Config        *config.Config
-	ConfigPath    string
-	Captions      *captions.Manager
-	mu            sync.Mutex
+	Translators  map[string]translate.Translator
+	BackendOrder []string
+	Channels     *config.ChannelStore
+	WebhookCache map[string]string // map[channelID]webhookID
+	Config       *config.Config
+	Captions     *captions.Manager
 }
 
-func NewHandler(translators map[string]translate.Translator, order []string, cfg *config.Config, configPath string, cs *config.ChannelStore) *Handler {
-	initialBackend := cfg.Backend
-	if initialBackend == "" {
-		initialBackend = "TranslateAPI"
-	}
+func NewHandler(translators map[string]translate.Translator, order []string, cfg *config.Config, cs *config.ChannelStore) *Handler {
 	return &Handler{
-		Translators:   translators,
-		BackendOrder:  order,
-		ActiveBackend: initialBackend,
-		Channels:      cs,
-		WebhookCache:  make(map[string]string),
-		Config:        cfg,
-		ConfigPath:    configPath,
-		Captions:      nil, // Will be set in main
+		Translators:  translators,
+		BackendOrder: order,
+		Channels:     cs,
+		WebhookCache: make(map[string]string),
+		Config:       cfg,
+		Captions:     nil, // Will be set in main
 	}
-}
-
-func (h *Handler) activeTranslator() translate.Translator {
-	return h.getTranslator(h.ActiveBackend)
 }
 
 func (h *Handler) MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
@@ -56,8 +42,8 @@ func (h *Handler) MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate
 		return
 	}
 
-	// Check if we are listening to this channel
-	if !h.Channels.Has(m.ChannelID) {
+	channelSettings, ok := h.Channels.Get(m.ChannelID)
+	if !ok || !channelSettings.Enabled {
 		return
 	}
 
@@ -70,8 +56,10 @@ func (h *Handler) MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate
 	// Detect Language for MyMemory and TranslateAPI
 	source := translate.DetectLanguage(m.Content)
 
+	backend := h.resolveBackend(channelSettings.Backend)
+
 	// Translate
-	resp, err := h.activeTranslator().Translate(m.Content, source)
+	resp, err := h.getTranslator(backend).Translate(m.Content, source)
 	if err != nil {
 		log.Printf("Translation error: %v", err)
 		return
@@ -84,7 +72,7 @@ func (h *Handler) MessageCreate(s *discordgo.Session, m *discordgo.MessageCreate
 	}
 
 	// Send Webhook
-	err = h.sendWebhook(s, m, resp.TranslatedText)
+	err = h.sendWebhook(s, m, resp.TranslatedText, backend, channelSettings.InteractionSelectEnabled)
 	if err != nil {
 		log.Printf("Webhook error: %v", err)
 	}
@@ -102,72 +90,8 @@ func (h *Handler) InteractionCreate(s *discordgo.Session, i *discordgo.Interacti
 func (h *Handler) handleCommandInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	data := i.ApplicationCommandData()
 	switch data.Name {
-	case "listen":
-		err := h.Channels.Add(i.ChannelID)
-		response := "DumTranslator is now listening to this channel."
-		if err != nil {
-			response = "Error saving channel: " + err.Error()
-		}
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: response,
-			},
-		})
-	case "ignore":
-		err := h.Channels.Remove(i.ChannelID)
-		response := "DumTranslator stopped listening to this channel."
-		if err != nil {
-			response = "Error saving channel: " + err.Error()
-		}
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: response,
-			},
-		})
-	case "backend":
-		options := data.Options
-		if len(options) == 0 {
-			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseChannelMessageWithSource,
-				Data: &discordgo.InteractionResponseData{
-					Content: "Current backend: " + h.ActiveBackend,
-				},
-			})
-			return
-		}
-
-		newBackend := options[0].StringValue()
-		if _, ok := h.Translators[newBackend]; !ok {
-			var available []string
-			for _, b := range h.BackendOrder {
-				available = append(available, b)
-			}
-			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseChannelMessageWithSource,
-				Data: &discordgo.InteractionResponseData{
-					Content: fmt.Sprintf("Invalid backend. Available backends: %s", strings.Join(available, ", ")),
-				},
-			})
-			return
-		}
-
-		h.ActiveBackend = newBackend
-		h.Config.Backend = newBackend
-		err := h.Config.Save(h.ConfigPath)
-		response := "Backend switched to " + newBackend
-		if err != nil {
-			log.Printf("Error saving config: %v", err)
-			response += " (failed to persist: " + err.Error() + ")"
-		}
-
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: response,
-			},
-		})
+	case "translate":
+		h.handleTranslateCommand(s, i, data)
 	case "captions":
 		if h.Config.CaptionsEnabled != nil && !*h.Config.CaptionsEnabled {
 			return
@@ -276,15 +200,11 @@ func (h *Handler) handleComponentInteraction(s *discordgo.Session, i *discordgo.
 		return
 	}
 	nextBackend := i.MessageComponentData().Values[0]
-
-	h.mu.Lock()
-	h.ActiveBackend = nextBackend
-	h.Config.Backend = nextBackend
-	err = h.Config.Save(h.ConfigPath)
-	h.mu.Unlock()
-
-	if err != nil {
-		log.Printf("Error saving config: %v", err)
+	if _, ok := h.Translators[nextBackend]; !ok {
+		s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Content: ptr("Invalid translation backend selection."),
+		})
+		return
 	}
 
 	// Get the original message that triggered this translation
@@ -330,7 +250,25 @@ func (h *Handler) getTranslator(backend string) translate.Translator {
 	return h.Translators["TranslateAPI"]
 }
 
-func (h *Handler) sendWebhook(s *discordgo.Session, m *discordgo.MessageCreate, content string) error {
+func (h *Handler) resolveBackend(backend string) string {
+	if _, ok := h.Translators[backend]; ok {
+		return backend
+	}
+	if h.Config != nil {
+		if _, ok := h.Translators[h.Config.Backend]; ok {
+			if backend != "" && backend != h.Config.Backend {
+				log.Printf("Unknown backend %q, falling back to configured default %q", backend, h.Config.Backend)
+			}
+			return h.Config.Backend
+		}
+	}
+	if backend != "" && backend != "TranslateAPI" {
+		log.Printf("Unknown backend %q, falling back to TranslateAPI", backend)
+	}
+	return "TranslateAPI"
+}
+
+func (h *Handler) sendWebhook(s *discordgo.Session, m *discordgo.MessageCreate, content string, activeBackend string, interactionSelectEnabled bool) error {
 	var webhookID string
 	var err error
 
@@ -361,9 +299,6 @@ func (h *Handler) sendWebhook(s *discordgo.Session, m *discordgo.MessageCreate, 
 	webhookID = targetWebhook.ID
 	webhookToken := targetWebhook.Token
 
-	// Create select menu for backend selection
-	actionRow := h.createBackendSelectMenu(m.ID, h.ActiveBackend)
-
 	// Use display name instead of just username
 	displayName := m.Author.Username
 	if m.Member != nil && m.Member.Nick != "" {
@@ -372,12 +307,18 @@ func (h *Handler) sendWebhook(s *discordgo.Session, m *discordgo.MessageCreate, 
 		displayName = m.Author.GlobalName
 	}
 
-	_, err = s.WebhookExecute(webhookID, webhookToken, true, &discordgo.WebhookParams{
-		Content:    content,
-		Username:   displayName,
-		AvatarURL:  m.Author.AvatarURL(""),
-		Components: []discordgo.MessageComponent{actionRow},
-	})
+	params := &discordgo.WebhookParams{
+		Content:   content,
+		Username:  displayName,
+		AvatarURL: m.Author.AvatarURL(""),
+	}
+	if interactionSelectEnabled {
+		params.Components = []discordgo.MessageComponent{
+			h.createBackendSelectMenu(m.ID, activeBackend),
+		}
+	}
+
+	_, err = s.WebhookExecute(webhookID, webhookToken, true, params)
 	return err
 }
 
@@ -393,7 +334,6 @@ func (h *Handler) createBackendSelectMenu(messageID string, activeBackend string
 		})
 	}
 
-
 	return discordgo.ActionsRow{
 		Components: []discordgo.MessageComponent{
 			discordgo.SelectMenu{
@@ -403,6 +343,119 @@ func (h *Handler) createBackendSelectMenu(messageID string, activeBackend string
 			},
 		},
 	}
+}
+
+func (h *Handler) handleTranslateCommand(s *discordgo.Session, i *discordgo.InteractionCreate, data discordgo.ApplicationCommandInteractionData) {
+	enabledSetting, hasEnabledSetting := optionStringValue(data.Options, "enabled")
+	backend, hasBackend := optionStringValue(data.Options, "backend")
+	interactionSelection, hasInteractionSelection := optionStringValue(data.Options, "interaction_selection")
+
+	if !hasEnabledSetting {
+		if hasBackend || hasInteractionSelection {
+			h.respondToInteraction(s, i, "Set `enabled` to `on` or `off` when changing translation settings for this channel.")
+			return
+		}
+		h.respondToInteraction(s, i, h.translateStatusMessage(i.ChannelID))
+		return
+	}
+
+	switch enabledSetting {
+	case "on":
+		if hasBackend {
+			if _, ok := h.Translators[backend]; !ok {
+				h.respondToInteraction(s, i, fmt.Sprintf("Invalid backend. Available backends: %s", strings.Join(h.availableBackends(), ", ")))
+				return
+			}
+		}
+
+		var interactionSelectEnabled *bool
+		if hasInteractionSelection {
+			enabled := interactionSelection == "on"
+			interactionSelectEnabled = &enabled
+		}
+
+		settings, err := h.Channels.Enable(i.ChannelID, backend, interactionSelectEnabled)
+		if err != nil {
+			h.respondToInteraction(s, i, "Error saving channel settings: "+err.Error())
+			return
+		}
+
+		h.respondToInteraction(s, i, fmt.Sprintf(
+			"Translation is on for this channel.\nBackend: %s\nInteraction select dropdown: %s",
+			h.resolveBackend(settings.Backend),
+			onOff(settings.InteractionSelectEnabled),
+		))
+	case "off":
+		settings, err := h.Channels.Disable(i.ChannelID)
+		if err != nil {
+			h.respondToInteraction(s, i, "Error saving channel settings: "+err.Error())
+			return
+		}
+
+		h.respondToInteraction(s, i, fmt.Sprintf(
+			"Translation is off for this channel.\nSaved backend: %s\nSaved interaction select dropdown: %s",
+			h.resolveBackend(settings.Backend),
+			onOff(settings.InteractionSelectEnabled),
+		))
+	default:
+		h.respondToInteraction(s, i, "Invalid enabled value. Use `on` or `off`.")
+	}
+}
+
+func (h *Handler) translateStatusMessage(channelID string) string {
+	settings, ok := h.Channels.Get(channelID)
+	if !ok {
+		return fmt.Sprintf(
+			"Translation is off for this channel.\nDefaults when enabled:\nBackend: %s\nInteraction select dropdown: %s",
+			h.resolveBackend(settings.Backend),
+			onOff(settings.InteractionSelectEnabled),
+		)
+	}
+
+	status := "off"
+	if settings.Enabled {
+		status = "on"
+	}
+
+	return fmt.Sprintf(
+		"Translation is %s for this channel.\nBackend: %s\nInteraction select dropdown: %s",
+		status,
+		h.resolveBackend(settings.Backend),
+		onOff(settings.InteractionSelectEnabled),
+	)
+}
+
+func (h *Handler) availableBackends() []string {
+	available := make([]string, 0, len(h.BackendOrder))
+	for _, backend := range h.BackendOrder {
+		available = append(available, backend)
+	}
+	return available
+}
+
+func (h *Handler) respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, content string) {
+	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: content,
+		},
+	})
+}
+
+func optionStringValue(options []*discordgo.ApplicationCommandInteractionDataOption, name string) (string, bool) {
+	for _, option := range options {
+		if option.Name == name {
+			return option.StringValue(), true
+		}
+	}
+	return "", false
+}
+
+func onOff(enabled bool) string {
+	if enabled {
+		return "on"
+	}
+	return "off"
 }
 
 func ptr(s string) *string {

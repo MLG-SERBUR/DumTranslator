@@ -12,5 +12,6 @@
     "stt_model": "whisper-large-v3",
     "mymemory_email": "YOUR_EMAIL@example.com",
     "backend": "TranslateAPI",
+    "interaction_select_enabled": true,
     "target_channels": []
 }

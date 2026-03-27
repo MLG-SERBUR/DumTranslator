@@ -14,7 +14,7 @@ A powerful Discord bot that automatically translates messages and provides real-
 ### Automatic Message Translation
 - **Language Detection**: Currently checks for Arabic and Korean characters (may be modified to detect more in the future)
 - **Multiple Translation Backends**: Choose from 3 different translation services
-- **Interactive Backend Selection**: Switch translation providers on-the-fly with dropdown menus
+- **Interactive Backend Selection**: Optionally switch translation providers on-the-fly with dropdown menus
 
 ### Real-Time Voice Captions
 - **Live Speech-to-Text**: Transcribes voice chat conversations in real-time
@@ -22,8 +22,8 @@ A powerful Discord bot that automatically translates messages and provides real-
 - **Powered by Groq**: Uses whisper-large-v3 for transcription and translation
 
 ### Flexible Configuration
-- **Channel Management**: Use `/listen` and `/ignore` commands to control where translations happen
-- **Backend Customization**: Set default translation backend or switch per-message
+- **Channel Management**: Use `/translate` to turn translations on or off per channel
+- **Backend Customization**: Set config defaults for new channels and override backend/dropdown settings per channel
 - **Resource Efficient**: Written in Go for minimal resource usage
 
 ## Translation Backends
@@ -42,13 +42,11 @@ For API key setup, refer to each service's documentation.
 
 ## Commands
 
-### Channel Management
-- `/listen` - Start translating messages in the current channel
-- `/ignore` - Stop translating messages in the current channel
-
 ### Translation Control
-- `/backend [name]` - Switch default translation backend
-- `/backend` (no args) - Show current backend
+- `/translate` - Show this channel's translation status and defaults
+- `/translate enabled:on` - Enable translations in the current channel using saved or config-default settings
+- `/translate enabled:on backend:TranslateAPI interaction_selection:off` - Enable or update this channel with a specific backend and dropdown preference
+- `/translate enabled:off` - Disable translations in the current channel while keeping its saved settings
 
 ### Voice Captions
 - `/captions on` - Start real-time captions in your voice channel
@@ -82,6 +80,7 @@ For API key setup, refer to each service's documentation.
      "groq_api_key": "YOUR_GROQ_API_KEY",
      "mymemory_email": "YOUR_EMAIL@example.com",
      "backend": "TranslateAPI",
+     "interaction_select_enabled": true,
      "target_channels": []
    }
    ```
@@ -105,15 +104,15 @@ Start the bot:
 
 ### Quick Start Guide
 1. Invite the bot to your server
-2. Use `/listen` in any channel to enable translations
+2. Use `/translate enabled:on` in any channel to enable translations
 3. Arabic and Korean messages will be automatically translated to English
-4. Use the dropdown menu on translated messages to try different backends
+4. If the channel has interaction selection enabled, use the dropdown menu on translated messages to try different backends
 5. For voice chats, use `/captions on` in the voice channel chat to enable live transcription
 
 ## Advanced Features
 
 ### Backend Selection
-Each translated message includes a dropdown menu to instantly re-translate using different backends - perfect for comparing translation quality!
+Each translated message can include a dropdown menu to instantly re-translate using different backends. Set `interaction_select_enabled` in config for new channels, or override it per channel with `/translate`.
 
 ### Cost Optimization
 The bot only processes Arabic and Korean messages, saving API costs by skipping English and other languages.
@@ -130,7 +129,7 @@ go run ./cmd/bot/main.go
 
 ## Notes
 - Voice captions require `captions_enabled: true` in config
-- Translation backends can be configured in `config.json`
+- `backend` and `interaction_select_enabled` in `config.json` act as defaults for newly enabled channels
 - Channel preferences persist between bot restarts
 - Language detection can be modified to support additional languages
 
