@@ -403,15 +403,14 @@ func (a *ArliAI) Translate(text string, source string) (*TranslateResponse, erro
 	log.Printf("Translating text with %s: %s", a.DisplayName(), text)
 
 	prompt := fmt.Sprintf(a.Prompt, text)
-	enableThinking := false
 	reqBody := ChatRequest{
 		Model: a.Model,
 		Messages: []ChatMessage{
 			{Role: "user", Content: prompt},
 		},
-		Temperature:    0,
-		Stream:         false,
-		EnableThinking: &enableThinking,
+		Temperature: 0,
+		Stream:      false,
+		MaxTokens:   1024, // Limit output for faster responses
 	}
 
 	jsonBody, err := json.Marshal(reqBody)
