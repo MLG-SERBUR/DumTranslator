@@ -75,6 +75,15 @@ func LoadConfig(path string) (*Config, error) {
 		enabled := true
 		cfg.InteractionSelectEnabled = &enabled
 	}
+	if cfg.CerebrasModel == "" {
+		cfg.CerebrasModel = "qwen-3-235b-a22b-instruct-2507"
+	}
+	if cfg.MistralModel == "" {
+		cfg.MistralModel = "mistral-large-latest"
+	}
+	if cfg.ArliAIModel == "" {
+		cfg.ArliAIModel = "Qwen3.5-27B-Derestricted"
+	}
 
 	return &cfg, nil
 }

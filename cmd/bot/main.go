@@ -36,42 +36,56 @@ func main() {
 	// Init Translators
 	tAPI := translate.NewTranslateAPI(cfg.TranslateAPIKey)
 	mm := translate.NewMyMemory(cfg.MyMemoryEmail)
-	cer := translate.NewCerebras(cfg.CerebrasAPIKey, cfg.CerebrasModel)
-	mis := translate.NewMistral(cfg.MistralAPIKey, cfg.MistralModel)
-	// arliai := translate.NewArliAI(cfg.ArliAIAPIKey, cfg.ArliAIModel)
 	google := translate.NewGoogleTranslate()
 
 	// Init Specialized (+) Translators
 	plusPrompt := "Translate the following text to natural, fluent, idiomatic English while preserving the original tone, intent, and cultural nuances; do not output anything else: %s"
 
-	cerPlus := translate.NewCerebras(cfg.CerebrasAPIKey, cfg.CerebrasModel)
-	cerPlus.Prompt = plusPrompt
-	cerPlus.DisplayNameOverride = fmt.Sprintf("Cerebras (%s) (+)", cfg.CerebrasModel)
-
-	misPlus := translate.NewMistral(cfg.MistralAPIKey, cfg.MistralModel)
-	misPlus.Prompt = plusPrompt
-	misPlus.DisplayNameOverride = fmt.Sprintf("Mistral (%s) (+)", cfg.MistralModel)
-
-	/*
-		arliaiPlus := translate.NewArliAI(cfg.ArliAIAPIKey, cfg.ArliAIModel)
-		arliaiPlus.Prompt = plusPrompt
-		arliaiPlus.DisplayNameOverride = fmt.Sprintf("ArliAI (%s) (+)", cfg.ArliAIModel)
-	*/
-
 	translators := map[string]translate.Translator{
 		"TranslateAPI": tAPI,
 		"MyMemory":     mm,
-		"Cerebras":     cer,
-		"Cerebras+":    cerPlus,
-		"Mistral":      mis,
-		"Mistral+":     misPlus,
 		"Google":       google,
 	}
 
+	order := []string{"TranslateAPI", "MyMemory"}
+
+	// Only add Cerebras if API key and model are provided
+	if cfg.CerebrasAPIKey != "" && cfg.CerebrasModel != "" {
+		cer := translate.NewCerebras(cfg.CerebrasAPIKey, cfg.CerebrasModel)
+		cerPlus := translate.NewCerebras(cfg.CerebrasAPIKey, cfg.CerebrasModel)
+		cerPlus.Prompt = plusPrompt
+		cerPlus.DisplayNameOverride = fmt.Sprintf("Cerebras (%s) (+)", cfg.CerebrasModel)
+		translators["Cerebras"] = cer
+		translators["Cerebras+"] = cerPlus
+		order = append(order, "Cerebras", "Cerebras+")
+	}
+
+	// Only add Mistral if API key and model are provided
+	if cfg.MistralAPIKey != "" && cfg.MistralModel != "" {
+		mis := translate.NewMistral(cfg.MistralAPIKey, cfg.MistralModel)
+		misPlus := translate.NewMistral(cfg.MistralAPIKey, cfg.MistralModel)
+		misPlus.Prompt = plusPrompt
+		misPlus.DisplayNameOverride = fmt.Sprintf("Mistral (%s) (+)", cfg.MistralModel)
+		translators["Mistral"] = mis
+		translators["Mistral+"] = misPlus
+		order = append(order, "Mistral", "Mistral+")
+	}
+
+	// Only add ArliAI if API key and model are provided
+	if cfg.ArliAIAPIKey != "" && cfg.ArliAIModel != "" {
+		arliai := translate.NewArliAI(cfg.ArliAIAPIKey, cfg.ArliAIModel)
+		arliaiPlus := translate.NewArliAI(cfg.ArliAIAPIKey, cfg.ArliAIModel)
+		arliaiPlus.Prompt = plusPrompt
+		arliaiPlus.DisplayNameOverride = fmt.Sprintf("ArliAI (%s) (+)", cfg.ArliAIModel)
+		translators["ArliAI"] = arliai
+		translators["ArliAI+"] = arliaiPlus
+		order = append(order, "ArliAI", "ArliAI+")
+	}
+
+	order = append(order, "Google")
+
 	// Init Groq STT
 	groq := translate.NewGroqClient(cfg.GroqAPIKey, cfg.STTModel)
-
-	order := []string{"TranslateAPI", "MyMemory", "Cerebras", "Cerebras+", "Mistral", "Mistral+", "Google"}
 
 	// Init Discord Handler
 	handler := discord.NewHandler(translators, order, cfg, channelStore)

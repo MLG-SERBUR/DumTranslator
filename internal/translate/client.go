@@ -196,11 +196,12 @@ type ChatMessage struct {
 }
 
 type ChatRequest struct {
-	Model       string         `json:"model"`
-	Messages    []ChatMessage  `json:"messages"`
-	Temperature float64        `json:"temperature"`
-	Stream      bool           `json:"stream"`
-	MaxTokens   int            `json:"max_tokens,omitempty"`
+	Model          string         `json:"model"`
+	Messages       []ChatMessage  `json:"messages"`
+	Temperature    float64        `json:"temperature"`
+	Stream         bool           `json:"stream"`
+	MaxTokens      int            `json:"max_tokens,omitempty"`
+	EnableThinking *bool          `json:"enable_thinking,omitempty"`
 }
 
 type ChatResponse struct {
@@ -219,7 +220,7 @@ type Cerebras struct {
 
 func NewCerebras(apiKey string, model string) *Cerebras {
 	if model == "" {
-		model = "gpt-oss-120b"
+		model = "qwen-3-235b-a22b-instruct-2507"
 	}
 	return &Cerebras{
 		ApiKey: apiKey,
@@ -381,7 +382,7 @@ type ArliAI struct {
 
 func NewArliAI(apiKey string, model string) *ArliAI {
 	if model == "" {
-		model = "Gemma-3-27B-it"
+		model = "Qwen3.5-27B-Derestricted"
 	}
 	return &ArliAI{
 		ApiKey: apiKey,
@@ -402,13 +403,15 @@ func (a *ArliAI) Translate(text string, source string) (*TranslateResponse, erro
 	log.Printf("Translating text with %s: %s", a.DisplayName(), text)
 
 	prompt := fmt.Sprintf(a.Prompt, text)
+	enableThinking := false
 	reqBody := ChatRequest{
 		Model: a.Model,
 		Messages: []ChatMessage{
 			{Role: "user", Content: prompt},
 		},
-		Temperature: 0,
-		Stream:      false,
+		Temperature:    0,
+		Stream:         false,
+		EnableThinking: &enableThinking,
 	}
 
 	jsonBody, err := json.Marshal(reqBody)
