@@ -352,7 +352,38 @@ func (h *Handler) handleTranslateCommand(s *discordgo.Session, i *discordgo.Inte
 
 	if !hasEnabledSetting {
 		if hasBackend || hasInteractionSelection {
-			h.respondToInteraction(s, i, "Set `enabled` to `on` or `off` when changing translation settings for this channel.")
+			// Check if translation is already enabled for this channel
+			settings, ok := h.Channels.Get(i.ChannelID)
+			if !ok || !settings.Enabled {
+				h.respondToInteraction(s, i, "Set `enabled` to `on` or `off` when changing translation settings for this channel.")
+				return
+			}
+
+			// Translation is already enabled, allow updating other settings
+			if hasBackend {
+				if _, ok := h.Translators[backend]; !ok {
+					h.respondToInteraction(s, i, fmt.Sprintf("Invalid backend. Available backends: %s", strings.Join(h.availableBackends(), ", ")))
+					return
+				}
+			}
+
+			var interactionSelectEnabled *bool
+			if hasInteractionSelection {
+				enabled := interactionSelection == "on"
+				interactionSelectEnabled = &enabled
+			}
+
+			settings, err := h.Channels.Update(i.ChannelID, backend, interactionSelectEnabled)
+			if err != nil {
+				h.respondToInteraction(s, i, "Error saving channel settings: "+err.Error())
+				return
+			}
+
+			h.respondToInteraction(s, i, fmt.Sprintf(
+				"Translation settings updated for this channel.\nBackend: %s\nInteraction select dropdown: %s",
+				h.resolveBackend(settings.Backend),
+				onOff(settings.InteractionSelectEnabled),
+			))
 			return
 		}
 		h.respondToInteraction(s, i, h.translateStatusMessage(i.ChannelID))

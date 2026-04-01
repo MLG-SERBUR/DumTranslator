@@ -211,6 +211,26 @@ func (cs *ChannelStore) Disable(channelID string) (ChannelSettings, error) {
 	return settings, cs.saveLocked()
 }
 
+func (cs *ChannelStore) Update(channelID string, backend string, interactionSelectEnabled *bool) (ChannelSettings, error) {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	settings, ok := cs.Channels[channelID]
+	if !ok {
+		return cs.defaultSettings(), errors.New("channel not found")
+	}
+
+	if backend != "" {
+		settings.Backend = backend
+	}
+	if interactionSelectEnabled != nil {
+		settings.InteractionSelectEnabled = *interactionSelectEnabled
+	}
+
+	cs.Channels[channelID] = settings
+	return settings, cs.saveLocked()
+}
+
 func (cs *ChannelStore) Has(channelID string) bool {
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
