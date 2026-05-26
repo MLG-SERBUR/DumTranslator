@@ -84,6 +84,7 @@ For API key setup, refer to each service's documentation.
      "target_channels": []
    }
    ```
+4. Run the bot: `./bot -config config.json`
 
 ### Invite the Bot
 Replace `YOUR_CLIENT_ID` with your bot's Application ID:
